@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { api, backendBaseUrl } from "../api/client";
 import OverviewTab from "../components/OverviewTab";
+import TestSuggestionsPanel from "../components/TestSuggestionsPanel";
 
 const templateOptions = ["cves", "exposures", "misconfiguration", "fuzzing"];
 const severityOptions = ["low", "medium", "high", "critical"];
@@ -608,6 +609,8 @@ export default function TargetPage() {
 
       {activeTab === "surface" ? (
         <>
+          <TestSuggestionsPanel targetId={Number(targetId)} scan={latestScan} />
+
           <section className="panel-card">
             <div className="panel-header">
               <h2>Endpoints</h2>

@@ -22,5 +22,6 @@ class Scan(Base):
     vulnerabilities = relationship("Vulnerability", back_populates="scan", cascade="all, delete-orphan")
     javascript_assets = relationship("JavaScriptAsset", back_populates="scan", cascade="all, delete-orphan")
     attack_paths = relationship("AttackPath", back_populates="scan", cascade="all, delete-orphan")
+    payload_opportunities = relationship("PayloadOpportunity", back_populates="scan", cascade="all, delete-orphan")
     logs = relationship("ScanLog", back_populates="scan", cascade="all, delete-orphan")
     diffs = relationship("ScanDiff", back_populates="scan", cascade="all, delete-orphan", foreign_keys="ScanDiff.scan_id")

@@ -12,6 +12,7 @@ from app.models.attack_path import AttackPath
 from app.models.endpoint import Endpoint
 from app.models.javascript_asset import JavaScriptAsset
 from app.models.notification import Notification
+from app.models.payload_opportunity import PayloadOpportunity
 from app.models.scan import Scan
 from app.models.scan_diff import ScanDiff
 from app.models.scan_log import ScanLog
@@ -28,6 +29,8 @@ from app.services.intelligence import (
     select_javascript_assets,
     synthesize_heuristic_findings,
 )
+from app.services.payload_generator import PayloadGenerator
+from app.services.payload_tester import OpportunityDetector
 from app.services.scan_runner import check_headers, run_gau, run_httpx, run_httpx_enrich, run_nuclei, run_subfinder
 from app.services.tool_executor import ToolExecutionResult
 from app.tasks.celery_app import celery_app
@@ -218,6 +221,60 @@ def _create_attack_paths(db: Session, scan_id: int, attack_paths: list[dict]) ->
     for attack_path in attack_paths:
         db.add(AttackPath(scan_id=scan_id, **attack_path))
     db.commit()
+
+
+def _detect_payload_opportunities(db: Session, scan_id: int) -> None:
+    """Detect and store payload testing opportunities for endpoints in this scan."""
+    endpoints = db.query(Endpoint).filter(Endpoint.scan_id == scan_id).all()
+    detector = OpportunityDetector()
+    
+    for endpoint in endpoints:
+        # Extract parameters from URL (simple approach: from query string)
+        parameters = _extract_parameters(endpoint.normalized_url)
+        if not parameters:
+            continue
+        
+        # Detect opportunities
+        opportunities = detector.detect_opportunities(endpoint.url, parameters)
+        
+        for opp in opportunities:
+            # Check if this opportunity already exists
+            existing = db.query(PayloadOpportunity).filter(
+                PayloadOpportunity.endpoint_id == endpoint.id,
+                PayloadOpportunity.parameter_name == opp["parameter_name"],
+                PayloadOpportunity.vulnerability_type.in_(opp["vulnerability_types"]),
+            ).first()
+            
+            if existing:
+                continue
+            
+            for vuln_type in opp["vulnerability_types"]:
+                payloads = PayloadGenerator.get_payloads_for_type(vuln_type)
+                
+                db.add(PayloadOpportunity(
+                    endpoint_id=endpoint.id,
+                    scan_id=scan_id,
+                    parameter_name=opp["parameter_name"],
+                    parameter_location=opp["parameter_location"],
+                    vulnerability_type=vuln_type,
+                    confidence=opp["confidence"],
+                    payloads_json=payloads[:5],  # Store first 5 payloads
+                    notes=opp["reason"],
+                ))
+    
+    db.commit()
+
+
+def _extract_parameters(url: str) -> list[str]:
+    """Extract parameter names from URL query string."""
+    from urllib.parse import parse_qs, urlparse
+    
+    try:
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query)
+        return list(params.keys())
+    except Exception:
+        return []
 
 
 def _compute_diff_and_notifications(db: Session, scan: Scan, target: Target) -> None:
@@ -531,6 +588,20 @@ def scan_stage_nuclei(payload: dict) -> dict:
             "success",
             {"count": len(ranked_attack_paths), "parsed_json": {"attack_paths": ranked_attack_paths[:25]}},
         )
+
+        # Detect payload testing opportunities
+        try:
+            _detect_payload_opportunities(db, scan.id)
+            opp_count = db.query(PayloadOpportunity).filter(PayloadOpportunity.scan_id == scan.id).count()
+            _log_step(
+                db,
+                scan.id,
+                "payload_opportunity_detection",
+                "success",
+                {"count": opp_count, "parsed_json": {}},
+            )
+        except Exception as e:
+            _soft_log(scan, db, "payload_opportunity_detection", {"count": 0}, warning=str(e)[:200])
 
         refreshed_scan, _ = _load_scan(scan.id, db)
         if refreshed_scan:
