@@ -17,17 +17,17 @@ RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in amd64) goarch=amd64 ;; arm64) goarch=arm64 ;; *) exit 1 ;; esac; \
     curl -fsSL "https://github.com/projectdiscovery/subfinder/releases/download/v${SUBFINDER_VERSION}/subfinder_${SUBFINDER_VERSION}_linux_${goarch}.zip" -o /tmp/subfinder.zip; \
-    unzip /tmp/subfinder.zip -d /usr/local/bin; \
+    unzip -oj /tmp/subfinder.zip subfinder -d /usr/local/bin; \
     curl -fsSL "https://github.com/projectdiscovery/httpx/releases/download/v${HTTPX_VERSION}/httpx_${HTTPX_VERSION}_linux_${goarch}.zip" -o /tmp/httpx.zip; \
-    unzip /tmp/httpx.zip -d /usr/local/bin; \
+    unzip -oj /tmp/httpx.zip httpx -d /usr/local/bin; \
     curl -fsSL "https://github.com/projectdiscovery/nuclei/releases/download/v${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION}_linux_${goarch}.zip" -o /tmp/nuclei.zip; \
-    unzip /tmp/nuclei.zip -d /usr/local/bin; \
+    unzip -oj /tmp/nuclei.zip nuclei -d /usr/local/bin; \
     curl -fsSL "https://github.com/lc/gau/releases/download/v${GAU_VERSION}/gau_${GAU_VERSION}_linux_${goarch}.tar.gz" -o /tmp/gau.tar.gz; \
     tar -xzf /tmp/gau.tar.gz -C /usr/local/bin gau; \
     chmod +x /usr/local/bin/subfinder /usr/local/bin/httpx /usr/local/bin/nuclei /usr/local/bin/gau
 
 COPY backend/requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
+RUN pip install --no-cache-dir --default-timeout=180 --retries=10 -r /tmp/requirements.txt
 
 COPY backend/app /app/app
 COPY backend/alembic /app/alembic
