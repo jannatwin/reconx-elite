@@ -1,3 +1,7 @@
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -27,4 +31,33 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 COPY . /app
 
+=======
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates unzip && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt email-validator
+
+COPY app ./app
+
+EXPOSE 8000
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

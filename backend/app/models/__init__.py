@@ -1,3 +1,7 @@
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
 from app.models.audit_log import AuditLog
 from app.models.bookmark import Bookmark
 from app.models.endpoint import Endpoint
@@ -27,3 +31,15 @@ __all__ = [
     "Notification",
     "Bookmark",
 ]
+=======
+
+>>>>>>> theirs
+=======
+
+>>>>>>> theirs
+=======
+
+>>>>>>> theirs
+=======
+
+>>>>>>> theirs

@@ -1,8 +1,33 @@
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
 version: "3.9"
 
 services:
   postgres:
     image: postgres:15-alpine
+=======
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+version: '3.9'
+services:
+  db:
+    image: postgres:16-alpine
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
     environment:
       POSTGRES_DB: reconx
       POSTGRES_USER: reconx
@@ -20,6 +45,10 @@ services:
   backend:
     build:
       context: ./backend
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
       dockerfile: Dockerfile
     env_file:
       - ./backend/.env.example
@@ -29,10 +58,39 @@ services:
       - "8000:8000"
     depends_on:
       - postgres
+=======
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+    environment:
+      DATABASE_URL: postgresql+psycopg2://reconx:reconx@db:5432/reconx
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: supersecret
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
       - redis
 
   worker:
     build:
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
       context: ./worker
       dockerfile: Dockerfile
     env_file:
@@ -43,16 +101,62 @@ services:
       - backend
       - redis
       - postgres
+=======
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+      context: .
+      dockerfile: worker/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg2://reconx:reconx@db:5432/reconx
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: supersecret
+    depends_on:
+      - db
+      - redis
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
 
   frontend:
     build:
       context: ./frontend
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
       dockerfile: Dockerfile
     environment:
       VITE_API_BASE_URL: http://localhost:8000
     volumes:
       - ./frontend:/frontend
       - /frontend/node_modules
+=======
+    environment:
+      VITE_API_URL: http://localhost:8000
+>>>>>>> theirs
+=======
+    environment:
+      VITE_API_URL: http://localhost:8000
+>>>>>>> theirs
+=======
+    environment:
+      VITE_API_URL: http://localhost:8000
+>>>>>>> theirs
+=======
+    environment:
+      VITE_API_URL: http://localhost:8000
+>>>>>>> theirs
     ports:
       - "5173:5173"
     depends_on:

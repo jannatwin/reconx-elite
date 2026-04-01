@@ -1,3 +1,7 @@
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
 body {
   margin: 0;
   background: #090d16;
@@ -168,3 +172,32 @@ td {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+=======
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+body { font-family: Arial, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; }
+.container { max-width: 1000px; margin: 20px auto; padding: 0 16px; }
+.card { background: #1e293b; border-radius: 10px; padding: 16px; margin: 12px 0; }
+input, button { padding: 10px; border-radius: 6px; border: 1px solid #334155; margin: 6px; }
+button { background: #22c55e; color: #052e16; font-weight: bold; cursor: pointer; }
+.link { background: transparent; color: #93c5fd; border: none; }
+.error { color: #fca5a5; }
+.disclaimer { color: #fbbf24; }
+table { width: 100%; border-collapse: collapse; }
+th, td { border-bottom: 1px solid #334155; text-align: left; padding: 8px; }
+.header-row { display: flex; justify-content: space-between; align-items: center; }
+a { color: #93c5fd; }
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
