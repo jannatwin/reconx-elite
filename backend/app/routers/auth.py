@@ -1,7 +1,3 @@
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -10,45 +6,17 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import create_access_token, create_refresh_token, decode_token, hash_password, verify_password
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
 from app.schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
 from app.services.audit import log_audit_event
-=======
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
-
-from app.core.security import create_access_token, get_password_hash, verify_password
-from app.db.session import get_db
-from app.models.models import User
-from app.schemas.schemas import Token, UserCreate, UserOut
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
 def rate_limit_key(request: Request) -> str:
     if hasattr(request.state, "rate_limit_key") and request.state.rate_limit_key:
         return request.state.rate_limit_key
@@ -59,7 +27,7 @@ limiter = Limiter(key_func=rate_limit_key)
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-@limiter.limit("10/minute")
+@limiter.limit(settings.register_rate_limit)
 def register(payload: RegisterRequest, request: Request, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
@@ -78,7 +46,7 @@ def register(payload: RegisterRequest, request: Request, db: Session = Depends(g
 
 
 @router.post("/login", response_model=TokenResponse)
-@limiter.limit("20/minute")
+@limiter.limit(settings.login_rate_limit)
 def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
     if not user or not verify_password(payload.password, user.password_hash):
@@ -98,7 +66,7 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
 
 
 @router.post("/refresh", response_model=TokenResponse)
-@limiter.limit("30/minute")
+@limiter.limit(settings.refresh_rate_limit)
 def refresh_token(payload: RefreshRequest, request: Request, db: Session = Depends(get_db)):
     try:
         claims = decode_token(payload.refresh_token)
@@ -138,38 +106,3 @@ def refresh_token(payload: RefreshRequest, request: Request, db: Session = Depen
         ip_address=request.client.host if request.client else None,
     )
     return TokenResponse(access_token=access, refresh_token=refresh)
-=======
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-@router.post("/register", response_model=UserOut)
-def register(payload: UserCreate, db: Session = Depends(get_db)):
-    existing = db.query(User).filter(User.email == payload.email).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    user = User(email=payload.email, hashed_password=get_password_hash(payload.password))
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
-
-
-@router.post("/login", response_model=Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == form_data.username).first()
-    if not user or not verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
-    return Token(access_token=create_access_token(user.email))
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs

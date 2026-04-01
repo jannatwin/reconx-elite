@@ -1,10 +1,8 @@
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
 from app.models.audit_log import AuditLog
+from app.models.attack_path import AttackPath
 from app.models.bookmark import Bookmark
 from app.models.endpoint import Endpoint
+from app.models.javascript_asset import JavaScriptAsset
 from app.models.notification import Notification
 from app.models.refresh_token import RefreshToken
 from app.models.scan import Scan
@@ -23,23 +21,13 @@ __all__ = [
     "ScanLog",
     "RefreshToken",
     "AuditLog",
+    "AttackPath",
     "Subdomain",
     "Endpoint",
     "Vulnerability",
+    "JavaScriptAsset",
     "ScheduledScan",
     "ScanDiff",
     "Notification",
     "Bookmark",
 ]
-=======
-
->>>>>>> theirs
-=======
-
->>>>>>> theirs
-=======
-
->>>>>>> theirs
-=======
-
->>>>>>> theirs

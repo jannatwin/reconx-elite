@@ -1,6 +1,7 @@
 from app.core.config import settings
 from app.services.scan_parser import (
     parse_gau_output,
+    parse_httpx_enrich_output,
     parse_httpx_headers_output,
     parse_httpx_live_output,
     parse_nuclei_output,
@@ -21,7 +22,7 @@ def run_httpx(hosts: list[str]) -> tuple[list[str], ToolExecutionResult | None]:
         return [], None
     result = execute_with_retry(
         "httpx",
-        ["httpx", "-silent", "-json"],
+        ["httpx", "-silent", "-json", "-status-code", "-follow-redirects"],
         stdin_payload="\n".join(hosts) + "\n",
         timeout_seconds=180,
     )
@@ -35,7 +36,7 @@ def run_httpx_enrich(hosts: list[str]) -> tuple[dict[str, dict], ToolExecutionRe
         return {}, None
     result = execute_with_retry(
         "httpx",
-        ["httpx", "-silent", "-json", "-ip", "-tech-detect", "-cdn"],
+        ["httpx", "-silent", "-json", "-ip", "-tech-detect", "-cdn", "-cname", "-title", "-status-code"],
         stdin_payload="\n".join(hosts) + "\n",
         timeout_seconds=180,
     )
@@ -77,7 +78,7 @@ def run_nuclei(targets: list[str], config: dict | None = None) -> tuple[list[dic
 def check_headers(urls: list[str]) -> tuple[list[dict], ToolExecutionResult | None]:
     if not urls:
         return [], None
-    scheme_allow = tuple(s.strip() + "://" for s in settings.scan_allowed_schemes.split(","))
+    scheme_allow = tuple(f"{scheme}://" for scheme in settings.allowed_schemes)
     scoped_urls = [u for u in urls if u.startswith(scheme_allow)]
     if not scoped_urls:
         return [], None

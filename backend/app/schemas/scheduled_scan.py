@@ -10,6 +10,12 @@ class ScheduledScanCreate(BaseModel):
     scan_config: Optional[dict] = None
 
 
+class ScheduledScanUpdate(BaseModel):
+    frequency: Optional[str] = None
+    enabled: Optional[bool] = None
+    scan_config: Optional[dict] = None
+
+
 class ScheduledScanOut(BaseModel):
     id: int
     target_id: int

@@ -1,229 +1,182 @@
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { apiRequest } from "../api";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+
+import { api } from "../api/client";
+import { useAuth } from "../context/AuthContext";
 
 export default function DashboardPage() {
   const [targets, setTargets] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [domain, setDomain] = useState("");
   const [error, setError] = useState("");
-  const token = localStorage.getItem("reconx_token");
-  const navigate = useNavigate();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { logout } = useAuth();
 
-  async function fetchTargets() {
-    try {
-      const data = await apiRequest("/targets", { token });
-      setTargets(data);
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  async function fetchNotifications() {
-    try {
-      const data = await apiRequest("/notifications", { token });
-      setNotifications(data);
-    } catch (err) {
-      // Ignore errors
-    }
+  async function loadDashboard() {
+    const [{ data: targetRows }, { data: notificationRows }] = await Promise.all([
+      api.get("/targets"),
+      api.get("/notifications"),
+    ]);
+    setTargets(targetRows);
+    setNotifications(notificationRows);
   }
 
   useEffect(() => {
-    fetchTargets();
-    fetchNotifications();
+    loadDashboard().catch((requestError) => {
+      setError(requestError.response?.data?.detail || "Failed to load dashboard");
+    });
   }, []);
 
-  async function onAddTarget(e) {
-    e.preventDefault();
+  const summary = useMemo(() => {
+    return targets.reduce(
+      (accumulator, target) => {
+        accumulator.targets += 1;
+        accumulator.subdomains += target.latest_scan?.subdomain_count || 0;
+        accumulator.endpoints += target.latest_scan?.endpoint_count || 0;
+        accumulator.vulnerabilities += target.latest_scan?.vulnerability_count || 0;
+        accumulator.highPriority += target.latest_scan?.high_priority_endpoint_count || 0;
+        return accumulator;
+      },
+      { targets: 0, subdomains: 0, endpoints: 0, vulnerabilities: 0, highPriority: 0 },
+    );
+  }, [targets]);
+
+  async function onAddTarget(event) {
+    event.preventDefault();
     setError("");
+    setIsSubmitting(true);
     try {
-      await apiRequest("/targets", { method: "POST", token, body: { domain } });
+      await api.post("/targets", { domain });
       setDomain("");
-      fetchTargets();
-    } catch (err) {
-      setError(err.message);
+      await loadDashboard();
+    } catch (requestError) {
+      setError(requestError.response?.data?.detail || "Could not add target");
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
-  function logout() {
-    localStorage.removeItem("reconx_token");
-    navigate("/login");
-  }
-
   return (
-    <div className="container">
-      <div className="row">
-        <h1>ReconX Dashboard</h1>
-        <button onClick={logout}>Logout</button>
-      </div>
-
-      <p className="disclaimer">
-        Legal reminder: run scans only on assets where you have explicit authorization.
-      </p>
-
-      <form className="card" onSubmit={onAddTarget}>
-        <h2>Add Target</h2>
-        <input
-          value={domain}
-          onChange={(e) => setDomain(e.target.value)}
-          placeholder="example.com"
-          required
-        />
-        <button type="submit">Add Domain</button>
-      </form>
-
-      {error && <p className="error">{error}</p>}
-
-      {notifications.length > 0 && (
-        <div className="card">
-          <h2>Notifications</h2>
-          <ul>
-            {notifications.slice(0, 5).map((n) => (
-              <li key={n.id} className={n.read ? "" : "unread"}>
-                {n.message}
-              </li>
-            ))}
-          </ul>
+    <main className="page-shell">
+      <header className="page-header">
+        <div>
+          <p className="eyebrow">ReconX Elite</p>
+          <h1>Recon dashboard</h1>
+          <p className="lede">Track targets, live surface changes, and the assets worth manual attention first.</p>
         </div>
-      )}
+        <button className="ghost-button" onClick={logout} type="button">
+          Logout
+        </button>
+      </header>
 
-=======
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { api } from '../api/client'
-import { useAuth } from '../context/AuthContext'
+      <section className="summary-strip">
+        <article className="summary-card">
+          <span>Targets</span>
+          <strong>{summary.targets}</strong>
+        </article>
+        <article className="summary-card">
+          <span>Subdomains</span>
+          <strong>{summary.subdomains}</strong>
+        </article>
+        <article className="summary-card">
+          <span>Endpoints</span>
+          <strong>{summary.endpoints}</strong>
+        </article>
+        <article className="summary-card">
+          <span>Vulnerabilities</span>
+          <strong>{summary.vulnerabilities}</strong>
+        </article>
+        <article className="summary-card highlight-card">
+          <span>High-priority assets</span>
+          <strong>{summary.highPriority}</strong>
+        </article>
+      </section>
 
-export default function DashboardPage() {
-  const [targets, setTargets] = useState([])
-  const [domain, setDomain] = useState('')
-  const [error, setError] = useState('')
-  const { logout } = useAuth()
+      <section className="layout-grid">
+        <form className="panel-card" onSubmit={onAddTarget}>
+          <h2>Add target</h2>
+          <p className="muted-copy">Strict domain normalization is enforced. Enter a hostname only.</p>
+          <label>
+            Domain
+            <input
+              value={domain}
+              onChange={(event) => setDomain(event.target.value)}
+              placeholder="example.com"
+              required
+            />
+          </label>
+          <button className="primary-button" disabled={isSubmitting} type="submit">
+            {isSubmitting ? "Adding..." : "Add target"}
+          </button>
+          <p className="legal-note">
+            Legal reminder: scan only assets where you have explicit authorization.
+          </p>
+          {error ? <p className="error-text">{error}</p> : null}
+        </form>
 
-  const loadTargets = async () => {
-    const { data } = await api.get('/targets')
-    setTargets(data)
-  }
+        <section className="panel-card">
+          <div className="panel-header">
+            <h2>Activity</h2>
+            <span className="pill">{notifications.filter((item) => !item.read).length} unread</span>
+          </div>
+          <div className="notification-list">
+            {notifications.length ? (
+              notifications.slice(0, 6).map((notification) => (
+                <article className={notification.read ? "notification-item" : "notification-item unread"} key={notification.id}>
+                  <p>{notification.message}</p>
+                  <span>{new Date(notification.created_at).toLocaleString()}</span>
+                </article>
+              ))
+            ) : (
+              <p className="muted-copy">No notifications yet.</p>
+            )}
+          </div>
+        </section>
+      </section>
 
-  useEffect(() => {
-    loadTargets().catch(() => setError('Failed to load targets'))
-  }, [])
-
-  const addTarget = async (e) => {
-    e.preventDefault()
-    try {
-      await api.post('/targets', { domain })
-      setDomain('')
-      await loadTargets()
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Could not add target')
-    }
-  }
-
-  return (
-    <div className="container">
-      <div className="header-row">
-        <h1>ReconX Dashboard</h1>
-        <button onClick={logout}>Logout</button>
-      </div>
-      <p className="disclaimer">Legal disclaimer: use this tool only on assets with explicit permission.</p>
-      <form onSubmit={addTarget} className="card">
-        <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="example.com" required />
-        <button type="submit">Add Target</button>
-      </form>
-      {error && <p className="error">{error}</p>}
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-      <div className="card">
-        <h2>Targets</h2>
-        <table>
-          <thead>
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-            <tr>
-              <th>Domain</th>
-              <th>Scans</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {targets.map((target) => (
-              <tr key={target.id}>
-                <td>{target.domain}</td>
-                <td>{target.scans?.length || 0}</td>
-                <td>
-                  <Link to={`/targets/${target.id}`}>Open</Link>
-                </td>
+      <section className="panel-card">
+        <div className="panel-header">
+          <h2>Targets</h2>
+          <span className="pill">{targets.length} tracked</span>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Domain</th>
+                <th>Latest stage</th>
+                <th>Surface</th>
+                <th>Findings</th>
+                <th>Priority</th>
+                <th></th>
               </tr>
-            ))}
-=======
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-            <tr><th>Domain</th><th>Latest status</th><th></th></tr>
-          </thead>
-          <tbody>
-            {targets.map((t) => {
-              const latest = t.scans?.[0]
-              return (
-                <tr key={t.id}>
-                  <td>{t.domain}</td>
-                  <td>{latest?.status || 'not-scanned'}</td>
-                  <td><Link to={`/targets/${t.id}`}>View</Link></td>
+            </thead>
+            <tbody>
+              {targets.map((target) => (
+                <tr key={target.id}>
+                  <td>
+                    <strong>{target.domain}</strong>
+                    <div className="table-subcopy">{target.scan_count} scans</div>
+                  </td>
+                  <td>
+                    <span className={`status-pill status-${target.latest_scan?.status || "idle"}`}>
+                      {target.latest_scan?.metadata_json?.stage || target.latest_scan?.status || "not-scanned"}
+                    </span>
+                  </td>
+                  <td>{target.latest_scan?.endpoint_count || 0} endpoints</td>
+                  <td>{target.latest_scan?.vulnerability_count || 0} findings</td>
+                  <td>{target.latest_scan?.high_priority_endpoint_count || 0} high-priority</td>
+                  <td>
+                    <Link className="text-link" to={`/targets/${target.id}`}>
+                      Open target
+                    </Link>
+                  </td>
                 </tr>
-              )
-            })}
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-          </tbody>
-        </table>
-      </div>
-    </div>
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
   );
-=======
-  )
->>>>>>> theirs
-=======
-  )
->>>>>>> theirs
-=======
-  )
->>>>>>> theirs
-=======
-  )
->>>>>>> theirs
 }

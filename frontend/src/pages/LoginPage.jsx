@@ -1,49 +1,75 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiRequest } from "../api";
+
+import { api } from "../api/client";
+import { useAuth } from "../context/AuthContext";
 
 export default function LoginPage() {
+  const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [isRegister, setIsRegister] = useState(false);
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
+  const { login } = useAuth();
 
-  async function onSubmit(e) {
-    e.preventDefault();
+  async function onSubmit(event) {
+    event.preventDefault();
+    setIsSubmitting(true);
     setError("");
     try {
-      const endpoint = isRegister ? "/auth/register" : "/auth/login";
-      const data = await apiRequest(endpoint, { method: "POST", body: { email, password } });
-      localStorage.setItem("reconx_token", data.access_token);
-      navigate("/");
-    } catch (err) {
-      setError(err.message);
+      const endpoint = mode === "register" ? "/auth/register" : "/auth/login";
+      const { data } = await api.post(endpoint, { email, password });
+      login(data);
+      navigate("/", { replace: true });
+    } catch (requestError) {
+      setError(requestError.response?.data?.detail || "Authentication failed");
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
   return (
-    <div className="container">
-      <h1>ReconX</h1>
-      <p className="disclaimer">
-        Use only on domains you own or are explicitly authorized to test.
-      </p>
-      <form className="card" onSubmit={onSubmit}>
-        <h2>{isRegister ? "Register" : "Login"}</h2>
-        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" required />
-        <input
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Password"
-          type="password"
-          required
-        />
-        {error && <p className="error">{error}</p>}
-        <button type="submit">{isRegister ? "Create Account" : "Sign In"}</button>
-        <button type="button" onClick={() => setIsRegister((v) => !v)}>
-          {isRegister ? "Have an account? Login" : "No account? Register"}
+    <main className="auth-shell">
+      <section className="auth-panel">
+        <p className="eyebrow">ReconX Elite</p>
+        <h1>Operate your recon pipeline with a clean attack-surface view.</h1>
+        <p className="auth-copy">
+          Use this platform only against infrastructure you own or are explicitly authorized to assess.
+        </p>
+      </section>
+      <section className="auth-card">
+        <form onSubmit={onSubmit}>
+          <h2>{mode === "register" ? "Create account" : "Welcome back"}</h2>
+          <label>
+            Email
+            <input
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="hunter@team.example"
+              type="email"
+              required
+            />
+          </label>
+          <label>
+            Password
+            <input
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Minimum 8 characters"
+              type="password"
+              required
+            />
+          </label>
+          {error ? <p className="error-text">{error}</p> : null}
+          <button className="primary-button" disabled={isSubmitting} type="submit">
+            {isSubmitting ? "Working..." : mode === "register" ? "Create account" : "Sign in"}
+          </button>
+        </form>
+        <button className="ghost-button" onClick={() => setMode(mode === "register" ? "login" : "register")} type="button">
+          {mode === "register" ? "Already have an account?" : "Need an account?"}
         </button>
-      </form>
-    </div>
+      </section>
+    </main>
   );
 }

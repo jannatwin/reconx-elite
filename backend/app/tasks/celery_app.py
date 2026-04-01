@@ -11,7 +11,7 @@ celery_app.conf.update(
     beat_schedule={
         "check-scheduled-scans": {
             "task": "app.tasks.scan_tasks.check_scheduled_scans",
-            "schedule": crontab(minute="*/10"),  # Every 10 minutes
+            "schedule": crontab(minute=f"*/{settings.scheduled_scan_poll_minutes}"),
         },
     },
 )

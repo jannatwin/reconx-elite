@@ -1,25 +1,12 @@
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
+from . import auth, bookmarks, notifications, reports, scans, schedules, targets, vulnerabilities
 
-=======
-from . import auth, scans, targets
-
-__all__ = ["auth", "scans", "targets"]
->>>>>>> theirs
-=======
-from . import auth, scans, targets
-
-__all__ = ["auth", "scans", "targets"]
->>>>>>> theirs
-=======
-from . import auth, scans, targets
-
-__all__ = ["auth", "scans", "targets"]
->>>>>>> theirs
-=======
-from . import auth, scans, targets
-
-__all__ = ["auth", "scans", "targets"]
->>>>>>> theirs
+__all__ = [
+    "auth",
+    "bookmarks",
+    "notifications",
+    "reports",
+    "scans",
+    "schedules",
+    "targets",
+    "vulnerabilities",
+]

@@ -29,7 +29,16 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
 
 class AuthGuardMiddleware(BaseHTTPMiddleware):
-    protected_prefixes = ("/targets", "/scan")
+    protected_prefixes = (
+        "/targets",
+        "/scan",
+        "/scans",
+        "/bookmarks",
+        "/notifications",
+        "/reports",
+        "/schedules",
+        "/vulnerabilities",
+    )
 
     async def dispatch(self, request: Request, call_next):
         auth_header = request.headers.get("Authorization", "")

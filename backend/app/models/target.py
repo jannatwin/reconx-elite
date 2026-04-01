@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, Text, UniqueConstraint, String, func
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -11,7 +11,7 @@ class Target(Base):
     id = Column(Integer, primary_key=True, index=True)
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     domain = Column(String(255), nullable=False, index=True)
-    notes = Column(String(2048), nullable=True)  # User notes for the target
+    notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     owner = relationship("User", back_populates="targets")

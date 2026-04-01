@@ -36,19 +36,26 @@ def parse_httpx_enrich_output(stdout: str) -> dict[str, dict]:
         host = (payload.get("input") or "").strip().lower()
         if host:
             tech = payload.get("tech", [])
-            cdn = payload.get("cdn", {}).get("name") if payload.get("cdn") else None
+            cdn_data = payload.get("cdn")
+            cdn = cdn_data.get("name") if isinstance(cdn_data, dict) else cdn_data
             waf = None
             for t in tech:
                 if t.lower() in known_cdn_waf:
                     waf = t
                     break
             cdn_waf = cdn or waf
+            cname = payload.get("cname")
+            if isinstance(cname, list):
+                cname = cname[0] if cname else None
             enrich_data[host] = {
                 "ip": payload.get("a", [None])[0] if payload.get("a") else None,
                 "tech_stack": tech,
                 "cdn": cdn,
                 "waf": waf,
                 "cdn_waf": cdn_waf,
+                "cname": cname,
+                "status_code": payload.get("status_code"),
+                "title": payload.get("title"),
             }
     return enrich_data
 
@@ -81,10 +88,18 @@ def parse_nuclei_output(stdout: str) -> list[dict[str, Any]]:
             {
                 "template_id": template_id,
                 "severity": info.get("severity", "unknown"),
+                "source": "nuclei",
+                "confidence": 0.92,
                 "matcher_name": matcher_name or None,
                 "matched_url": matched_url or None,
                 "host": host or None,
                 "description": info.get("description"),
+                "evidence_json": {
+                    "name": info.get("name"),
+                    "tags": info.get("tags") or [],
+                    "reference": info.get("reference") or [],
+                    "classification": info.get("classification") or {},
+                },
             }
         )
     return vulns
@@ -113,9 +128,12 @@ def parse_httpx_headers_output(stdout: str) -> list[dict[str, Any]]:
             {
                 "template_id": "reconx-missing-security-headers",
                 "severity": "info",
+                "source": "heuristic",
+                "confidence": 0.45,
                 "matcher_name": "missing-headers",
                 "host": host or None,
                 "description": f"Missing security headers: {', '.join(missing)}",
+                "evidence_json": {"missing_headers": missing},
             }
         )
     return findings

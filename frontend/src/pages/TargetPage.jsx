@@ -1,117 +1,119 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { apiRequest } from "../api";
 
-const OverviewTab = lazy(() => import("../components/OverviewTab"));
+import { api, backendBaseUrl } from "../api/client";
+import OverviewTab from "../components/OverviewTab";
+
+const templateOptions = ["cves", "exposures", "misconfiguration", "fuzzing"];
+const severityOptions = ["low", "medium", "high", "critical"];
+const severityWeight = { critical: 4, high: 3, medium: 2, low: 1, info: 0 };
 
 export default function TargetPage() {
   const { targetId } = useParams();
-  const token = localStorage.getItem("reconx_token");
   const [target, setTarget] = useState(null);
+  const [bookmarks, setBookmarks] = useState([]);
+  const [schedules, setSchedules] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
-  const [endpointSearch, setEndpointSearch] = useState("");
   const [activeTab, setActiveTab] = useState("overview");
+  const [endpointSearch, setEndpointSearch] = useState("");
+  const deferredEndpointSearch = useDeferredValue(endpointSearch);
+  const [severityFilter, setSeverityFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [environmentFilter, setEnvironmentFilter] = useState("all");
+  const [tagFilter, setTagFilter] = useState("all");
+  const [focusMode, setFocusMode] = useState(false);
   const [selectedTemplates, setSelectedTemplates] = useState(["cves", "exposures"]);
   const [selectedSeverities, setSelectedSeverities] = useState(["high", "critical"]);
-  const [severityFilter, setSeverityFilter] = useState("all");
-  const [subdomainFilter, setSubdomainFilter] = useState("all");
-  const [bookmarks, setBookmarks] = useState([]);
-  const templateOptions = ["cves", "exposures", "misconfiguration", "fuzzing"];
-  const severityOptions = ["low", "medium", "high", "critical"];
+  const [targetNotes, setTargetNotes] = useState("");
+  const [vulnNotes, setVulnNotes] = useState({});
+  const [scheduleFrequency, setScheduleFrequency] = useState("daily");
 
-  async function fetchTarget() {
+  async function loadPage() {
     setIsLoading(true);
     try {
-      const data = await apiRequest(`/targets/${targetId}`, { token });
-      setTarget(data);
-      setTargetNotes(data.notes || "");
-      const bmData = await apiRequest("/bookmarks", { token });
-      setBookmarks(bmData);
+      const [targetResponse, bookmarkResponse, scheduleResponse] = await Promise.all([
+        api.get(`/targets/${targetId}`),
+        api.get("/bookmarks"),
+        api.get("/schedules"),
+      ]);
+      startTransition(() => {
+        setTarget(targetResponse.data);
+        setBookmarks(bookmarkResponse.data);
+        setSchedules(scheduleResponse.data.filter((item) => item.target_id === Number(targetId)));
+      });
+      setTargetNotes(targetResponse.data.notes || "");
+      const latestScan = targetResponse.data.scans?.[0];
+      setVulnNotes(
+        Object.fromEntries((latestScan?.vulnerabilities || []).map((item) => [item.id, item.notes || ""])),
+      );
       setError("");
-    } catch (err) {
-      setError(err.message);
+    } catch (requestError) {
+      setError(requestError.response?.data?.detail || "Failed to load target");
     } finally {
       setIsLoading(false);
     }
   }
 
   useEffect(() => {
-    fetchTarget();
-    const interval = setInterval(fetchTarget, 5000);
-    return () => clearInterval(interval);
+    loadPage();
+    const interval = window.setInterval(() => {
+      loadPage();
+    }, 5000);
+    return () => window.clearInterval(interval);
   }, [targetId]);
 
-  async function triggerScan() {
-    setError("");
-    try {
-      await apiRequest(`/scan/${targetId}`, { method: "POST", token });
-      fetchTarget();
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  async function toggleBookmark(endpointId) {
-    const existing = bookmarks.find(b => b.endpoint_id === endpointId);
-    try {
-      if (existing) {
-        await apiRequest(`/bookmarks/${existing.id}`, { method: "DELETE", token });
-      } else {
-        await apiRequest("/bookmarks", { method: "POST", token, body: { endpoint_id: endpointId } });
-      }
-      fetchTarget();
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  function toggleItem(values, setValues, value) {
-    if (values.includes(value)) {
-      setValues(values.filter((v) => v !== value));
-    } else {
-      setValues([...values, value]);
-    }
-  }
-
-  const latestScan = useMemo(() => {
-    if (!target?.scans?.length) return null;
-    return [...target.scans].sort((a, b) => b.id - a.id)[0];
-  }, [target]);
-
-  const scanSubdomains = latestScan?.subdomains || [];
-  const scanEndpoints = latestScan?.endpoints || [];
-  const scanVulns = latestScan?.vulnerabilities || [];
+  const latestScan = target?.scans?.[0] || null;
+  const subdomains = latestScan?.subdomains || [];
+  const endpoints = latestScan?.endpoints || [];
+  const vulnerabilities = latestScan?.vulnerabilities || [];
+  const attackPaths = latestScan?.attack_paths || [];
+  const javascriptAssets = latestScan?.javascript_assets || [];
   const scanLogs = latestScan?.logs || [];
+  const latestDiff = latestScan?.diffs?.[0] || null;
+
+  const availableTags = useMemo(() => {
+    const tags = new Set();
+    for (const row of subdomains) {
+      for (const tag of row.tags || []) {
+        tags.add(tag);
+      }
+    }
+    for (const row of endpoints) {
+      for (const tag of row.tags || []) {
+        tags.add(tag);
+      }
+    }
+    return [...tags].sort();
+  }, [subdomains, endpoints]);
 
   const summary = useMemo(() => {
-    const totalSubdomains = scanSubdomains.length;
-    const liveHosts = scanSubdomains.filter((s) => s.is_live).length;
-    const endpoints = scanEndpoints.length;
-    const severities = { low: 0, medium: 0, high: 0, critical: 0, info: 0 };
-    for (const vuln of scanVulns) {
-      const sev = (vuln.severity || "info").toLowerCase();
-      if (severities[sev] === undefined) severities.info += 1;
-      else severities[sev] += 1;
+    const liveHosts = subdomains.filter((item) => item.is_live).length;
+    const highPriorityEndpoints = endpoints.filter((item) => item.priority_score >= 60).length;
+    const severityCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+    for (const vulnerability of vulnerabilities) {
+      const severity = (vulnerability.severity || "info").toLowerCase();
+      severityCounts[severity] = (severityCounts[severity] || 0) + 1;
     }
     return {
-      totalSubdomains,
+      totalSubdomains: subdomains.length,
       liveHosts,
-      endpoints,
-      vulnerabilities: scanVulns.length,
-      severities,
+      endpoints: endpoints.length,
+      highPriorityEndpoints,
+      vulnerabilities: vulnerabilities.length,
+      attackPaths: attackPaths.length,
+      severityCounts,
     };
-  }, [scanSubdomains, scanEndpoints, scanVulns]);
+  }, [subdomains, endpoints, vulnerabilities, attackPaths]);
 
   const severityChartData = useMemo(
-    () => [
-      { severity: "low", count: summary.severities.low },
-      { severity: "medium", count: summary.severities.medium },
-      { severity: "high", count: summary.severities.high },
-      { severity: "critical", count: summary.severities.critical },
-      { severity: "info", count: summary.severities.info },
-    ],
-    [summary]
+    () =>
+      Object.entries(summary.severityCounts).map(([severity, count]) => ({
+        severity,
+        count,
+      })),
+    [summary],
   );
 
   const progressTimelineData = useMemo(() => {
@@ -128,215 +130,472 @@ export default function TargetPage() {
   }, [scanLogs]);
 
   const scanHistoryData = useMemo(() => {
-    if (!target?.scans) return [];
-    return target.scans
-      .filter((s) => s.status === "completed")
-      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-      .map((s) => ({
-        date: new Date(s.created_at).toLocaleDateString(),
-        subdomains: s.subdomains.length,
-        endpoints: s.endpoints.length,
-        vulnerabilities: s.vulnerabilities.length,
+    return (target?.scans || [])
+      .filter((scan) => scan.status === "completed")
+      .slice()
+      .reverse()
+      .map((scan) => ({
+        date: new Date(scan.created_at).toLocaleDateString(),
+        subdomains: scan.subdomains.length,
+        endpoints: scan.endpoints.length,
+        vulnerabilities: scan.vulnerabilities.length,
       }));
   }, [target]);
 
-  const newFindings = useMemo(() => {
-    if (!latestScan?.diffs?.length) return null;
-    const diff = latestScan.diffs[0]; // Latest diff
-    return {
-      newSubdomains: diff.new_subdomains || [],
-      newEndpoints: diff.new_endpoints || [],
-      newVulnerabilities: diff.new_vulnerabilities || [],
-    };
-  }, [latestScan]);
+  const filteredSubdomains = useMemo(() => {
+    return subdomains.filter((item) => {
+      if (environmentFilter !== "all" && item.environment !== environmentFilter) {
+        return false;
+      }
+      if (tagFilter !== "all" && !(item.tags || []).includes(tagFilter)) {
+        return false;
+      }
+      if (focusMode && !item.is_live && !item.takeover_candidate) {
+        return false;
+      }
+      return true;
+    });
+  }, [subdomains, environmentFilter, tagFilter, focusMode]);
 
-  const filteredSubdomains = scanSubdomains.filter((row) => {
-    if (subdomainFilter === "live") return !!row.is_live;
-    if (subdomainFilter === "dead") return !row.is_live;
-    return true;
-  });
+  const filteredEndpoints = useMemo(() => {
+    return endpoints
+      .filter((item) => {
+        const matchesSearch =
+          !deferredEndpointSearch ||
+          item.url.toLowerCase().includes(deferredEndpointSearch.toLowerCase()) ||
+          item.normalized_url.toLowerCase().includes(deferredEndpointSearch.toLowerCase());
+        if (!matchesSearch) {
+          return false;
+        }
+        if (sourceFilter !== "all" && item.source !== sourceFilter) {
+          return false;
+        }
+        if (tagFilter !== "all" && !(item.tags || []).includes(tagFilter)) {
+          return false;
+        }
+        if (focusMode && item.priority_score < 60) {
+          return false;
+        }
+        return true;
+      })
+      .sort((left, right) => right.priority_score - left.priority_score);
+  }, [endpoints, deferredEndpointSearch, sourceFilter, tagFilter, focusMode]);
 
-  const filteredEndpoints = scanEndpoints.filter((e) =>
-    e.url.toLowerCase().includes(endpointSearch.toLowerCase())
-  );
+  const filteredVulnerabilities = useMemo(() => {
+    return vulnerabilities
+      .filter((item) => {
+        if (severityFilter !== "all" && item.severity !== severityFilter) {
+          return false;
+        }
+        if (sourceFilter !== "all" && item.source !== sourceFilter) {
+          return false;
+        }
+        if (focusMode && !["critical", "high"].includes(item.severity)) {
+          return false;
+        }
+        return true;
+      })
+      .sort((left, right) => severityWeight[right.severity] - severityWeight[left.severity]);
+  }, [vulnerabilities, severityFilter, sourceFilter, focusMode]);
 
-  const filteredVulns = scanVulns.filter((v) => {
-    if (severityFilter === "all") return true;
-    return (v.severity || "").toLowerCase() === severityFilter;
-  });
+  const filteredAttackPaths = useMemo(() => {
+    return attackPaths
+      .filter((item) => {
+        if (severityFilter !== "all" && item.severity !== severityFilter) {
+          return false;
+        }
+        if (focusMode && item.score < 120) {
+          return false;
+        }
+        return true;
+      })
+      .sort((left, right) => right.score - left.score);
+  }, [attackPaths, severityFilter, focusMode]);
+
+  async function triggerScan() {
+    setError("");
+    try {
+      await api.post(`/scan/${targetId}`);
+      await loadPage();
+    } catch (requestError) {
+      setError(requestError.response?.data?.detail || "Scan failed to start");
+    }
+  }
+
+  async function triggerConfiguredScan() {
+    setError("");
+    try {
+      await api.post(`/scan/${targetId}/config`, {
+        selected_templates: selectedTemplates,
+        severity_filter: selectedSeverities,
+      });
+      await loadPage();
+    } catch (requestError) {
+      setError(requestError.response?.data?.detail || "Configured scan failed to start");
+    }
+  }
+
+  async function saveTargetNotes() {
+    setIsSaving(true);
+    try {
+      await api.put(`/targets/${targetId}`, { notes: targetNotes });
+      await loadPage();
+    } catch (requestError) {
+      setError(requestError.response?.data?.detail || "Could not save target notes");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function saveVulnNotes(vulnerabilityId) {
+    try {
+      await api.put(`/vulnerabilities/${vulnerabilityId}`, { notes: vulnNotes[vulnerabilityId] || "" });
+      await loadPage();
+    } catch (requestError) {
+      setError(requestError.response?.data?.detail || "Could not save vulnerability notes");
+    }
+  }
+
+  async function toggleBookmark(endpointId) {
+    const existing = bookmarks.find((bookmark) => bookmark.endpoint_id === endpointId);
+    try {
+      if (existing) {
+        await api.delete(`/bookmarks/${existing.id}`);
+      } else {
+        await api.post("/bookmarks", { endpoint_id: endpointId });
+      }
+      await loadPage();
+    } catch (requestError) {
+      setError(requestError.response?.data?.detail || "Bookmark update failed");
+    }
+  }
+
+  async function createSchedule() {
+    try {
+      await api.post("/schedules", {
+        target_id: Number(targetId),
+        frequency: scheduleFrequency,
+        scan_config: {
+          selected_templates: selectedTemplates,
+          severity_filter: selectedSeverities,
+        },
+      });
+      await loadPage();
+    } catch (requestError) {
+      setError(requestError.response?.data?.detail || "Could not create schedule");
+    }
+  }
+
+  async function toggleSchedule(schedule) {
+    try {
+      await api.put(`/schedules/${schedule.id}`, { enabled: !schedule.enabled });
+      await loadPage();
+    } catch (requestError) {
+      setError(requestError.response?.data?.detail || "Could not update schedule");
+    }
+  }
+
+  async function deleteSchedule(scheduleId) {
+    try {
+      await api.delete(`/schedules/${scheduleId}`);
+      await loadPage();
+    } catch (requestError) {
+      setError(requestError.response?.data?.detail || "Could not delete schedule");
+    }
+  }
+
+  function toggleListItem(list, setList, value) {
+    setList(list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
+  }
 
   if (isLoading) {
-    return (
-      <div className="container">
-        <div className="row">
-          <h1>Target Details</h1>
-          <Link to="/">Back</Link>
-        </div>
-        <div className="skeleton-grid">
-          <div className="skeleton-card" />
-          <div className="skeleton-card" />
-          <div className="skeleton-card" />
-          <div className="skeleton-card" />
-        </div>
-        <div className="skeleton-block" />
-      </div>
-    );
+    return <main className="page-shell"><div className="panel-card">Loading target...</div></main>;
   }
 
   return (
-    <div className="container">
-      <div className="row">
-        <h1>Target Details</h1>
-        <Link to="/">Back</Link>
-      </div>
-      {target && <h2>{target.domain}</h2>}
-      {target && (
-        <div className="card">
-          <h3>Target Notes</h3>
+    <main className="page-shell">
+      <header className="page-header">
+        <div>
+          <Link className="text-link" to="/">
+            Back to dashboard
+          </Link>
+          <h1>{target?.domain}</h1>
+          <p className="lede">
+            Latest stage: <span className={`status-pill status-${latestScan?.status || "idle"}`}>{latestScan?.metadata_json?.stage || latestScan?.status || "not-scanned"}</span>
+          </p>
+        </div>
+        <div className="button-row">
+          <a className="ghost-button link-button" href={`${backendBaseUrl}/reports/${targetId}/json`} rel="noreferrer" target="_blank">
+            JSON report
+          </a>
+          <a className="ghost-button link-button" href={`${backendBaseUrl}/reports/${targetId}/pdf`} rel="noreferrer" target="_blank">
+            PDF report
+          </a>
+          <button className="primary-button" onClick={triggerScan} type="button">
+            Trigger default scan
+          </button>
+        </div>
+      </header>
+
+      {error ? <p className="error-text panel-card">{error}</p> : null}
+
+      <section className="layout-grid">
+        <article className="panel-card">
+          <h2>Target notes</h2>
           <textarea
+            className="notes-area"
             value={targetNotes}
-            onChange={(e) => setTargetNotes(e.target.value)}
-            placeholder="Add notes about this target..."
-            rows={4}
+            onChange={(event) => setTargetNotes(event.target.value)}
+            placeholder="Capture scope notes, escalation paths, or account context here."
+            rows={5}
           />
-          <button onClick={saveTargetNotes}>Save Notes</button>
-          <div>
-            <a href={`/api/reports/${targetId}/json`} download>Download JSON Report</a>
-            <a href={`/api/reports/${targetId}/pdf`} download>Download PDF Report</a>
+          <button className="primary-button" disabled={isSaving} onClick={saveTargetNotes} type="button">
+            {isSaving ? "Saving..." : "Save notes"}
+          </button>
+        </article>
+
+        <article className="panel-card">
+          <h2>Configured scan</h2>
+          <div className="chip-grid">
+            {templateOptions.map((option) => (
+              <button
+                className={selectedTemplates.includes(option) ? "chip chip-active" : "chip"}
+                key={option}
+                onClick={() => toggleListItem(selectedTemplates, setSelectedTemplates, option)}
+                type="button"
+              >
+                {option}
+              </button>
+            ))}
           </div>
-        </div>
-      )}
-      {error && <p className="error card">Scan error: {error}</p>}
-      <button onClick={triggerScan}>Trigger Default Scan</button>
-      <div className="card">
-        <h3>Advanced Nuclei Config</h3>
-        <p>Select template categories:</p>
-        <div className="row">
-          {templateOptions.map((option) => (
-            <label key={option}>
-              <input
-                type="checkbox"
-                checked={selectedTemplates.includes(option)}
-                onChange={() => toggleItem(selectedTemplates, setSelectedTemplates, option)}
-              />
-              {option}
-            </label>
-          ))}
-        </div>
-        <p>Select severity:</p>
-        <div className="row">
-          {severityOptions.map((option) => (
-            <label key={option}>
-              <input
-                type="checkbox"
-                checked={selectedSeverities.includes(option)}
-                onChange={() => toggleItem(selectedSeverities, setSelectedSeverities, option)}
-              />
-              {option}
-            </label>
-          ))}
-        </div>
-        <button onClick={triggerConfiguredScan}>Trigger Configured Scan</button>
-      </div>
-      {latestScan && (
-        <p>
-          Latest scan #{latestScan.id} - <strong>{latestScan.status}</strong> (
-          {latestScan.metadata_json?.step || "unknown"})
-        </p>
-      )}
-
-      <div className="tabs-row">
-        <button className={activeTab === "overview" ? "tab tab-active" : "tab"} onClick={() => setActiveTab("overview")}>
-          Overview
-        </button>
-        <button className={activeTab === "recon" ? "tab tab-active" : "tab"} onClick={() => setActiveTab("recon")}>
-          Recon Data
-        </button>
-        <button className={activeTab === "vulns" ? "tab tab-active" : "tab"} onClick={() => setActiveTab("vulns")}>
-          Vulnerabilities
-        </button>
-      </div>
-
-      {activeTab === "overview" && (
-        <Suspense fallback={<div className="chart-skeleton" />}>
-          <OverviewTab
-            summary={summary}
-            severityChartData={severityChartData}
-            progressTimelineData={progressTimelineData}
-            scanHistoryData={scanHistoryData}
-          />
-        </Suspense>
-      )}
-
-      {activeTab === "recon" && (
-        <>
-          {newFindings && (newFindings.newSubdomains.length > 0 || newFindings.newEndpoints.length > 0) && (
-            <div className="card highlight">
-              <h3>New Findings</h3>
-              {newFindings.newSubdomains.length > 0 && (
-                <p><strong>New Subdomains:</strong> {newFindings.newSubdomains.join(", ")}</p>
-              )}
-              {newFindings.newEndpoints.length > 0 && (
-                <p><strong>New Endpoints:</strong> {newFindings.newEndpoints.slice(0, 5).join(", ")}{newFindings.newEndpoints.length > 5 ? "..." : ""}</p>
-              )}
-            </div>
-          )}
-
-          <div className="card">
-            <h3>Subdomains</h3>
-            <div className="filters-row">
-              <select value={subdomainFilter} onChange={(e) => setSubdomainFilter(e.target.value)}>
-                <option value="all">All</option>
-                <option value="live">Live only</option>
-                <option value="dead">Dead only</option>
-              </select>
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Hostname</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredSubdomains.map((row) => (
-                  <tr key={row.hostname}>
-                    <td>{row.hostname}</td>
-                    <td>{row.is_live ? "Live" : "Dead"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="chip-grid">
+            {severityOptions.map((option) => (
+              <button
+                className={selectedSeverities.includes(option) ? "chip chip-active" : "chip"}
+                key={option}
+                onClick={() => toggleListItem(selectedSeverities, setSelectedSeverities, option)}
+                type="button"
+              >
+                {option}
+              </button>
+            ))}
           </div>
+          <button className="primary-button" onClick={triggerConfiguredScan} type="button">
+            Trigger configured scan
+          </button>
+        </article>
 
-          <div className="card">
-            <h3>Endpoints</h3>
-            <input
-              placeholder="Search endpoint..."
-              value={endpointSearch}
-              onChange={(e) => setEndpointSearch(e.target.value)}
-            />
-            <button onClick={() => navigator.clipboard.writeText(filteredEndpoints.map(e => e.url).join('\n'))}>
-              Copy All URLs (for Burp)
+        <article className="panel-card">
+          <div className="panel-header">
+            <h2>Schedules</h2>
+            <span className="pill">{schedules.length}</span>
+          </div>
+          <div className="button-row">
+            <select value={scheduleFrequency} onChange={(event) => setScheduleFrequency(event.target.value)}>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+            </select>
+            <button className="ghost-button" onClick={createSchedule} type="button">
+              Create schedule
             </button>
+          </div>
+          <div className="stack-list">
+            {schedules.length ? (
+              schedules.map((schedule) => (
+                <div className="list-row" key={schedule.id}>
+                  <div>
+                    <strong>{schedule.frequency}</strong>
+                    <div className="table-subcopy">Next run: {schedule.next_run ? new Date(schedule.next_run).toLocaleString() : "unset"}</div>
+                  </div>
+                  <div className="button-row">
+                    <button className="ghost-button" onClick={() => toggleSchedule(schedule)} type="button">
+                      {schedule.enabled ? "Pause" : "Enable"}
+                    </button>
+                    <button className="ghost-button danger-button" onClick={() => deleteSchedule(schedule.id)} type="button">
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="muted-copy">No schedules yet.</p>
+            )}
+          </div>
+        </article>
+      </section>
+
+      <section className="panel-card filter-bar">
+        <div className="filter-row">
+          <select value={environmentFilter} onChange={(event) => setEnvironmentFilter(event.target.value)}>
+            <option value="all">All environments</option>
+            <option value="prod">Prod</option>
+            <option value="staging">Staging</option>
+            <option value="dev">Dev</option>
+            <option value="unknown">Unknown</option>
+          </select>
+          <select value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value)}>
+            <option value="all">All severities</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+            <option value="info">Info</option>
+          </select>
+          <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}>
+            <option value="all">All sources</option>
+            <option value="gau">gau</option>
+            <option value="js">js</option>
+            <option value="nuclei">nuclei</option>
+            <option value="heuristic">heuristic</option>
+          </select>
+          <select value={tagFilter} onChange={(event) => setTagFilter(event.target.value)}>
+            <option value="all">All tags</option>
+            {availableTags.map((tag) => (
+              <option key={tag} value={tag}>
+                {tag}
+              </option>
+            ))}
+          </select>
+          <label className="toggle-inline">
+            <input checked={focusMode} onChange={(event) => setFocusMode(event.target.checked)} type="checkbox" />
+            Focus mode
+          </label>
+        </div>
+      </section>
+
+      <nav className="tab-row">
+        {[
+          ["overview", "Overview"],
+          ["recon", "Recon Data"],
+          ["vulnerabilities", "Vulnerabilities"],
+          ["surface", "Attack Surface"],
+          ["paths", "Attack Paths"],
+        ].map(([value, label]) => (
+          <button
+            className={activeTab === value ? "tab-button tab-button-active" : "tab-button"}
+            key={value}
+            onClick={() => setActiveTab(value)}
+            type="button"
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {activeTab === "overview" ? (
+        <OverviewTab
+          progressTimelineData={progressTimelineData}
+          scanHistoryData={scanHistoryData}
+          severityChartData={severityChartData}
+          summary={summary}
+        />
+      ) : null}
+
+      {activeTab === "recon" ? (
+        <>
+          {latestDiff ? (
+            <section className="panel-card">
+              <h2>Latest diff</h2>
+              <p className="muted-copy">
+                {latestDiff.new_subdomains.length} new subdomains, {latestDiff.new_endpoints.length} new endpoints, {latestDiff.new_vulnerabilities.length} new findings.
+              </p>
+            </section>
+          ) : null}
+          <section className="panel-card">
+            <div className="panel-header">
+              <h2>Subdomains</h2>
+              <span className="pill">{filteredSubdomains.length}</span>
+            </div>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Hostname</th>
+                    <th>Environment</th>
+                    <th>Live</th>
+                    <th>CDN/WAF</th>
+                    <th>Takeover</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredSubdomains.map((item) => (
+                    <tr key={item.id}>
+                      <td>
+                        <strong>{item.hostname}</strong>
+                        <div className="table-subcopy">{(item.tags || []).join(", ") || "no tags"}</div>
+                      </td>
+                      <td>{item.environment}</td>
+                      <td>{item.is_live ? "Live" : "No response"}</td>
+                      <td>{item.cdn_waf || "-"}</td>
+                      <td>{item.takeover_candidate ? "Candidate" : "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="panel-card">
+            <div className="panel-header">
+              <h2>Stage logs</h2>
+              <span className="pill">{scanLogs.length}</span>
+            </div>
+            <div className="stack-list">
+              {scanLogs.map((log) => (
+                <article className="log-row" key={log.id}>
+                  <div className="log-row-head">
+                    <strong>{log.step}</strong>
+                    <span className={`status-pill status-${log.status}`}>{log.status}</span>
+                  </div>
+                  <p className="muted-copy">
+                    {log.duration_ms} ms, attempt {log.attempts}
+                  </p>
+                  <pre>{JSON.stringify(log.details_json || {}, null, 2)}</pre>
+                </article>
+              ))}
+            </div>
+          </section>
+        </>
+      ) : null}
+
+      {activeTab === "vulnerabilities" ? (
+        <section className="panel-card">
+          <div className="panel-header">
+            <h2>Vulnerabilities</h2>
+            <span className="pill">{filteredVulnerabilities.length}</span>
+          </div>
+          <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>URL</th>
-                  <th>Actions</th>
+                  <th>Severity</th>
+                  <th>Source</th>
+                  <th>Template</th>
+                  <th>Matched URL</th>
+                  <th>Notes</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredEndpoints.map((row) => (
-                  <tr key={row.url}>
-                    <td>{row.url}</td>
+                {filteredVulnerabilities.map((item) => (
+                  <tr key={item.id}>
                     <td>
-                      <button onClick={() => navigator.clipboard.writeText(row.url)}>Copy</button>
-                      <button onClick={() => window.open(row.url, '_blank')}>Open</button>
-                      <button onClick={() => window.open(`${row.url}?test=<script>alert(1)</script>`, '_blank')}>XSS Test</button>
-                      <button onClick={() => window.open(`${row.url}?id=1'`, '_blank')}>SQL Test</button>
-                      <button onClick={() => toggleBookmark(row.id)}>
-                        {bookmarks.some(b => b.endpoint_id === row.id) ? "Unbookmark" : "Bookmark"}
+                      <span className={`status-pill status-${item.severity}`}>{item.severity}</span>
+                    </td>
+                    <td>{item.source}</td>
+                    <td>
+                      <strong>{item.template_id}</strong>
+                      <div className="table-subcopy">confidence {item.confidence.toFixed(2)}</div>
+                    </td>
+                    <td>{item.matched_url || item.host || "-"}</td>
+                    <td>
+                      <textarea
+                        className="notes-area compact"
+                        rows={3}
+                        value={vulnNotes[item.id] || ""}
+                        onChange={(event) => setVulnNotes({ ...vulnNotes, [item.id]: event.target.value })}
+                      />
+                      <button className="ghost-button" onClick={() => saveVulnNotes(item.id)} type="button">
+                        Save
                       </button>
                     </td>
                   </tr>
@@ -344,61 +603,126 @@ export default function TargetPage() {
               </tbody>
             </table>
           </div>
-        </>
-      )}
+        </section>
+      ) : null}
 
-      {activeTab === "vulns" && (
-        <div className="card">
-          <h3>Vulnerabilities</h3>
-          {newFindings?.newVulnerabilities?.length > 0 && (
-            <div className="highlight">
-              <p><strong>New Vulnerabilities:</strong> {newFindings.newVulnerabilities.length} new issues found</p>
+      {activeTab === "surface" ? (
+        <>
+          <section className="panel-card">
+            <div className="panel-header">
+              <h2>Endpoints</h2>
+              <span className="pill">{filteredEndpoints.length}</span>
             </div>
+            <div className="button-row">
+              <input
+                value={endpointSearch}
+                onChange={(event) => setEndpointSearch(event.target.value)}
+                placeholder="Search endpoints"
+              />
+              <button
+                className="ghost-button"
+                onClick={() => navigator.clipboard.writeText(filteredEndpoints.map((item) => item.url).join("\n"))}
+                type="button"
+              >
+                Copy URLs
+              </button>
+            </div>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Endpoint</th>
+                    <th>Source</th>
+                    <th>Score</th>
+                    <th>Focus</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredEndpoints.map((item) => {
+                    const isBookmarked = bookmarks.some((bookmark) => bookmark.endpoint_id === item.id);
+                    return (
+                      <tr key={item.id}>
+                        <td>
+                          <strong>{item.normalized_url}</strong>
+                          <div className="table-subcopy">{(item.tags || []).join(", ") || "general"}</div>
+                        </td>
+                        <td>{item.source}</td>
+                        <td>{item.priority_score}</td>
+                        <td>{(item.focus_reasons || []).join(", ") || "-"}</td>
+                        <td>
+                          <div className="button-row">
+                            <button className="ghost-button" onClick={() => window.open(item.url, "_blank", "noopener,noreferrer")} type="button">
+                              Open
+                            </button>
+                            <button className="ghost-button" onClick={() => toggleBookmark(item.id)} type="button">
+                              {isBookmarked ? "Unbookmark" : "Bookmark"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="panel-card">
+            <div className="panel-header">
+              <h2>JavaScript intelligence</h2>
+              <span className="pill">{javascriptAssets.length}</span>
+            </div>
+            <div className="stack-list">
+              {javascriptAssets.length ? (
+                javascriptAssets.map((asset) => (
+                  <article className="list-row" key={asset.id}>
+                    <div>
+                      <strong>{asset.url}</strong>
+                      <div className="table-subcopy">
+                        {asset.extracted_endpoints.length} extracted endpoints, {asset.secrets_json.length} secret candidates
+                      </div>
+                    </div>
+                    <span className={`status-pill status-${asset.status}`}>{asset.status}</span>
+                  </article>
+                ))
+              ) : (
+                <p className="muted-copy">No JavaScript assets captured in the latest scan.</p>
+              )}
+            </div>
+          </section>
+        </>
+      ) : null}
+
+      {activeTab === "paths" ? (
+        <section className="stack-list">
+          {filteredAttackPaths.length ? (
+            filteredAttackPaths.map((path) => (
+              <article className="panel-card" key={path.id}>
+                <div className="panel-header">
+                  <div>
+                    <h2>{path.title}</h2>
+                    <p className="muted-copy">{path.summary}</p>
+                  </div>
+                  <span className={`status-pill status-${path.severity}`}>{path.score}</span>
+                </div>
+                <div className="stack-list compact-stack">
+                  {(path.steps_json || []).map((step, index) => (
+                    <div className="list-row" key={`${path.id}-${index}`}>
+                      <strong>{step.kind}</strong>
+                      <span>{step.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            ))
+          ) : (
+            <section className="panel-card">
+              <p className="muted-copy">No ranked attack paths were produced for the latest scan.</p>
+            </section>
           )}
-          <div className="filters-row">
-            <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value)}>
-              <option value="all">All severities</option>
-              <option value="critical">Critical</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-              <option value="info">Info</option>
-            </select>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>Severity</th>
-                <th>Template</th>
-                <th>Matched URL</th>
-                <th>Host</th>
-                <th>Description</th>
-                <th>Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredVulns.map((row, idx) => (
-                <tr key={`${row.template_id}-${idx}`}>
-                  <td>{row.severity}</td>
-                  <td>{row.template_id}</td>
-                  <td>{row.matched_url || "-"}</td>
-                  <td>{row.host || "-"}</td>
-                  <td>{row.description || "-"}</td>
-                  <td>
-                    <textarea
-                      value={vulnNotes[row.id] || row.notes || ""}
-                      onChange={(e) => setVulnNotes({ ...vulnNotes, [row.id]: e.target.value })}
-                      placeholder="Add notes..."
-                      rows={2}
-                    />
-                    <button onClick={() => saveVulnNotes(row.id)}>Save</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+        </section>
+      ) : null}
+    </main>
   );
 }

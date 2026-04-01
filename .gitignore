@@ -1,35 +1,9 @@
 __pycache__/
 *.pyc
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
 .pytest_cache/
 .env
 .DS_Store
-
+node_modules/
 frontend/node_modules/
 frontend/dist/
-
 *.log
-=======
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-.env
-node_modules/
-frontend/dist/
-.pytest_cache/
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs

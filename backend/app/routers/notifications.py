@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.notification import Notification
@@ -12,7 +13,7 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
 @router.get("", response_model=list[NotificationOut])
-@limiter.limit("120/minute")
+@limiter.limit(settings.read_rate_limit)
 def list_notifications(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     return (
         db.query(Notification)
@@ -23,7 +24,7 @@ def list_notifications(db: Session = Depends(get_db), user: User = Depends(get_c
 
 
 @router.put("/{notification_id}/read")
-@limiter.limit("120/minute")
+@limiter.limit(settings.write_rate_limit)
 def mark_read(
     notification_id: int,
     db: Session = Depends(get_db),

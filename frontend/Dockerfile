@@ -1,33 +1,21 @@
-FROM node:20-alpine
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
+FROM node:20-alpine AS build
+
 WORKDIR /frontend
-COPY package*.json ./
-RUN npm install
-COPY . .
-CMD ["npm", "run", "dev"]
-=======
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm install
-COPY . .
-EXPOSE 5173
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
+
+ARG VITE_API_BASE_URL=http://localhost:8000
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci
+
+COPY frontend ./
+RUN npm run build
+
+FROM nginx:1.27-alpine
+
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /frontend/dist /usr/share/nginx/html
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
