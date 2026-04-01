@@ -19,3 +19,5 @@ class User(Base):
     scheduled_scans = relationship("ScheduledScan", back_populates="user", cascade="all, delete-orphan")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
     bookmarks = relationship("Bookmark", back_populates="user", cascade="all, delete-orphan")
+    blind_xss_hits = relationship("BlindXssHit", back_populates="user", cascade="all, delete-orphan")
+    ssrf_signals = relationship("SsrfSignal", back_populates="user", cascade="all, delete-orphan")

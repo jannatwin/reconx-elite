@@ -7,7 +7,7 @@ from celery import chain
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
-from app.core.database import SessionLocal
+from app.core.database import get_sessionmaker
 from app.models.attack_path import AttackPath
 from app.models.endpoint import Endpoint
 from app.models.javascript_asset import JavaScriptAsset
@@ -29,9 +29,11 @@ from app.services.intelligence import (
     select_javascript_assets,
     synthesize_heuristic_findings,
 )
+from app.services.blind_xss_service import BlindXssService
 from app.services.payload_generator import PayloadGenerator
 from app.services.payload_tester import OpportunityDetector
 from app.services.scan_runner import check_headers, run_gau, run_httpx, run_httpx_enrich, run_nuclei, run_subfinder
+from app.services.ssrf_service import SsrfService
 from app.services.tool_executor import ToolExecutionResult
 from app.tasks.celery_app import celery_app
 
@@ -250,8 +252,38 @@ def _detect_payload_opportunities(db: Session, scan_id: int) -> None:
             
             for vuln_type in opp["vulnerability_types"]:
                 payloads = PayloadGenerator.get_payloads_for_type(vuln_type)
-                
-                db.add(PayloadOpportunity(
+
+                # For blind XSS, generate payloads with tokens
+                if vuln_type == "blind_xss":
+                    # Get user ID from target owner
+                    user_id = target.owner_id
+                    token = BlindXssService.create_token_for_opportunity(db, user_id, None)  # Will be updated with opp ID after creation
+
+                    # Replace __TOKEN__ placeholder with actual token and domain
+                    domain = target.domain  # Use target domain as base
+                    modified_payloads = []
+                    for payload in payloads[:3]:  # Only use first 3 blind XSS payloads
+                        modified_payload = BlindXssService.create_payload_with_token(payload, token, domain)
+                        modified_payloads.append(modified_payload)
+
+                    payloads = modified_payloads
+
+                # For SSRF, generate payloads with tokens
+                elif vuln_type == "ssrf":
+                    # Get user ID from target owner
+                    user_id = target.owner_id
+                    token = SsrfService.create_token_for_opportunity(db, user_id, None)  # Will be updated with opp ID after creation
+
+                    # Replace __TOKEN__ placeholder with actual token and domain
+                    domain = target.domain  # Use target domain as base
+                    modified_payloads = []
+                    for payload in payloads[:5]:  # Use first 5 SSRF payloads
+                        modified_payload = SsrfService.create_payload_with_token(payload, token, domain)
+                        modified_payloads.append(modified_payload)
+
+                    payloads = modified_payloads
+
+                db_opp = PayloadOpportunity(
                     endpoint_id=endpoint.id,
                     scan_id=scan_id,
                     parameter_name=opp["parameter_name"],
@@ -260,7 +292,31 @@ def _detect_payload_opportunities(db: Session, scan_id: int) -> None:
                     confidence=opp["confidence"],
                     payloads_json=payloads[:5],  # Store first 5 payloads
                     notes=opp["reason"],
-                ))
+                )
+                db.add(db_opp)
+                db.flush()  # Get the ID
+
+                # For blind XSS, update the token with the opportunity ID
+                if vuln_type == "blind_xss":
+                    # Find the token entry and update it
+                    token_entry = db.query(BlindXssHit).filter(
+                        BlindXssHit.user_id == target.owner_id,
+                        BlindXssHit.payload_opportunity_id.is_(None)
+                    ).order_by(BlindXssHit.triggered_at.desc()).first()
+
+                    if token_entry:
+                        token_entry.payload_opportunity_id = db_opp.id
+
+                # For SSRF, update the token with the opportunity ID
+                elif vuln_type == "ssrf":
+                    # Find the token entry and update it
+                    token_entry = db.query(SsrfSignal).filter(
+                        SsrfSignal.user_id == target.owner_id,
+                        SsrfSignal.payload_opportunity_id.is_(None)
+                    ).order_by(SsrfSignal.triggered_at.desc()).first()
+
+                    if token_entry:
+                        token_entry.payload_opportunity_id = db_opp.id
     
     db.commit()
 
@@ -360,7 +416,7 @@ def start_scan_chain(scan_id: int) -> None:
 
 @celery_app.task(name="app.tasks.scan_tasks.scan_stage_subfinder")
 def scan_stage_subfinder(scan_id: int) -> dict:
-    db = SessionLocal()
+    db = get_sessionmaker()()
     try:
         scan, target = _load_scan(scan_id, db)
         if not scan or not target:
@@ -389,7 +445,7 @@ def scan_stage_subfinder(scan_id: int) -> dict:
 
 @celery_app.task(name="app.tasks.scan_tasks.scan_stage_httpx")
 def scan_stage_httpx(payload: dict) -> dict:
-    db = SessionLocal()
+    db = get_sessionmaker()()
     try:
         scan_id = payload["scan_id"]
         scan, target = _load_scan(scan_id, db)
@@ -449,7 +505,7 @@ def scan_stage_httpx(payload: dict) -> dict:
 
 @celery_app.task(name="app.tasks.scan_tasks.scan_stage_gau")
 def scan_stage_gau(payload: dict) -> dict:
-    db = SessionLocal()
+    db = get_sessionmaker()()
     try:
         scan_id = payload["scan_id"]
         scan, target = _load_scan(scan_id, db)
@@ -505,7 +561,7 @@ def scan_stage_gau(payload: dict) -> dict:
 
 @celery_app.task(name="app.tasks.scan_tasks.scan_stage_nuclei")
 def scan_stage_nuclei(payload: dict) -> dict:
-    db = SessionLocal()
+    db = get_sessionmaker()()
     try:
         scan_id = payload["scan_id"]
         scan, target = _load_scan(scan_id, db)
@@ -620,7 +676,7 @@ def scan_stage_nuclei(payload: dict) -> dict:
 
 @celery_app.task(name="app.tasks.scan_tasks.check_scheduled_scans")
 def check_scheduled_scans() -> dict:
-    db = SessionLocal()
+    db = get_sessionmaker()()
     try:
         now = datetime.now(timezone.utc)
         due_schedules = (

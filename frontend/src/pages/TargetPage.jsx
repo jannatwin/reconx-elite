@@ -2,6 +2,7 @@ import { startTransition, useDeferredValue, useEffect, useMemo, useState } from 
 import { Link, useParams } from "react-router-dom";
 
 import { api, backendBaseUrl } from "../api/client";
+import BlindHitsPanel from "../components/BlindHitsPanel";
 import OverviewTab from "../components/OverviewTab";
 import TestSuggestionsPanel from "../components/TestSuggestionsPanel";
 
@@ -471,6 +472,7 @@ export default function TargetPage() {
           ["vulnerabilities", "Vulnerabilities"],
           ["surface", "Attack Surface"],
           ["paths", "Attack Paths"],
+          ["blind-xss", "Blind XSS"],
         ].map(([value, label]) => (
           <button
             className={activeTab === value ? "tab-button tab-button-active" : "tab-button"}
@@ -725,6 +727,10 @@ export default function TargetPage() {
             </section>
           )}
         </section>
+      ) : null}
+
+      {activeTab === "blind-xss" ? (
+        <BlindHitsPanel targetId={targetId} />
       ) : null}
     </main>
   );

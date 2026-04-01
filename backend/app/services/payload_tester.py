@@ -179,7 +179,7 @@ class OpportunityDetector:
                 opportunities.append({
                     "parameter_name": param,
                     "parameter_location": "query",
-                    "vulnerability_types": ["xss"],
+                    "vulnerability_types": ["xss", "blind_xss"],
                     "confidence": 70,
                     "reason": "Text input parameter likely reflects user data",
                 })

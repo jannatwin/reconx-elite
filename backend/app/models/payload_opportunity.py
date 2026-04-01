@@ -24,3 +24,5 @@ class PayloadOpportunity(Base):
 
     endpoint = relationship("Endpoint", back_populates="payload_opportunities")
     scan = relationship("Scan", back_populates="payload_opportunities")
+    blind_xss_hits = relationship("BlindXssHit", back_populates="payload_opportunity", cascade="all, delete-orphan")
+    ssrf_signals = relationship("SsrfSignal", back_populates="payload_opportunity", cascade="all, delete-orphan")

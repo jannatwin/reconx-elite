@@ -1,9 +1,12 @@
+from typing import List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.models.blind_xss_hit import BlindXssHit
 from app.models.endpoint import Endpoint
 from app.models.payload_opportunity import PayloadOpportunity
 from app.models.scan import Scan
@@ -15,6 +18,7 @@ from app.schemas.payload_opportunity import (
     PayloadOpportunityOut,
 )
 from app.services.audit import log_audit_event
+from app.services.blind_xss_service import BlindXssService
 
 router = APIRouter(prefix="/payloads", tags=["payloads"])
 
@@ -163,3 +167,113 @@ def get_endpoint_payload_opportunities(
     )
 
     return opportunities
+
+
+@router.get("/blind-xss/hits", response_model=list[dict])
+@limiter.limit(settings.read_rate_limit)
+def get_blind_xss_hits(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Get all blind XSS hits for the current user."""
+    hits = BlindXssService.get_user_hits(db, user.id)
+
+    result = []
+    for hit in hits:
+        result.append({
+            "id": hit.id,
+            "token": hit.token,
+            "ip_address": hit.ip_address,
+            "user_agent": hit.user_agent,
+            "referrer": hit.referrer,
+            "url_path": hit.url_path,
+            "method": hit.method,
+            "triggered_at": hit.triggered_at,
+            "processed": hit.processed,
+            "payload_opportunity": {
+                "id": hit.payload_opportunity.id,
+                "endpoint_url": hit.payload_opportunity.endpoint.url if hit.payload_opportunity else None,
+                "parameter_name": hit.payload_opportunity.parameter_name if hit.payload_opportunity else None,
+            } if hit.payload_opportunity else None,
+        })
+
+    log_audit_event(
+        db,
+        action="blind_xss_hits_viewed",
+        user_id=user.id,
+        ip_address=request.client.host if request.client else None,
+        metadata_json={"hits_count": len(result)},
+    )
+
+    return result
+
+
+@router.put("/blind-xss/hits/{hit_id}/processed")
+@limiter.limit(settings.read_rate_limit)
+def mark_blind_xss_hit_processed(
+    hit_id: int,
+    processed: int = 1,  # 1=processed, 2=ignored
+    request: Request = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Mark a blind XSS hit as processed or ignored."""
+    # Verify the hit belongs to the user
+    hit = db.query(BlindXssHit).filter(BlindXssHit.id == hit_id, BlindXssHit.user_id == user.id).first()
+    if not hit:
+        raise HTTPException(status_code=404, detail="Blind XSS hit not found")
+
+    if processed not in [1, 2]:
+        raise HTTPException(status_code=400, detail="Processed status must be 1 (processed) or 2 (ignored)")
+
+    success = BlindXssService.mark_hit_processed(db, hit_id, processed)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update hit status")
+
+    log_audit_event(
+        db,
+        action="blind_xss_hit_processed",
+        user_id=user.id,
+        ip_address=request.client.host if request.client else None,
+        metadata_json={"hit_id": hit_id, "processed_status": processed},
+    )
+
+    return {"success": True, "processed": processed}
+
+
+@router.post("/blind-xss/tokens")
+@limiter.limit(settings.read_rate_limit)
+def create_blind_xss_token(
+    payload_opportunity_id: Optional[int] = None,
+    request: Request = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Create a new blind XSS tracking token."""
+    if payload_opportunity_id:
+        # Verify the payload opportunity belongs to the user
+        opp = (
+            db.query(PayloadOpportunity)
+            .join(Scan)
+            .join(Target)
+            .filter(
+                PayloadOpportunity.id == payload_opportunity_id,
+                Target.owner_id == user.id
+            )
+            .first()
+        )
+        if not opp:
+            raise HTTPException(status_code=404, detail="Payload opportunity not found")
+
+    token = BlindXssService.create_token_for_opportunity(db, user.id, payload_opportunity_id)
+
+    log_audit_event(
+        db,
+        action="blind_xss_token_created",
+        user_id=user.id,
+        ip_address=request.client.host if request.client else None,
+        metadata_json={"token": token, "payload_opportunity_id": payload_opportunity_id},
+    )
+
+    return {"token": token, "payload_opportunity_id": payload_opportunity_id}
