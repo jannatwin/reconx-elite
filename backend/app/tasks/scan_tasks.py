@@ -351,10 +351,10 @@ def _compute_diff_and_notifications(db: Session, scan: Scan, target: Target) -> 
 
 def start_scan_chain(scan_id: int) -> None:
     chain(
-        scan_stage_subfinder.s(scan_id),
-        scan_stage_httpx.s(),
-        scan_stage_gau.s(),
-        scan_stage_nuclei.s(),
+        scan_stage_subfinder.s(scan_id),  # type: ignore
+        scan_stage_httpx.s(),  # type: ignore
+        scan_stage_gau.s(),  # type: ignore
+        scan_stage_nuclei.s(),  # type: ignore
     ).apply_async()
 
 

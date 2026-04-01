@@ -1,0 +1,10 @@
+{
+  "python.defaultInterpreterPath": "python",
+  "python.analysis.extraPaths": [
+    "."
+  ],
+  "python.analysis.cwd": "backend",
+  "python.analysis.root": "backend",
+  "python.envFile": "${workspaceFolder}/backend/.env",
+  "python.terminal.activateEnvironment": false
+}
