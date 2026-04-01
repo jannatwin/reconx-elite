@@ -21,3 +21,4 @@ class Scan(Base):
     endpoints = relationship("Endpoint", back_populates="scan", cascade="all, delete-orphan")
     vulnerabilities = relationship("Vulnerability", back_populates="scan", cascade="all, delete-orphan")
     logs = relationship("ScanLog", back_populates="scan", cascade="all, delete-orphan")
+    diffs = relationship("ScanDiff", back_populates="scan", cascade="all, delete-orphan")

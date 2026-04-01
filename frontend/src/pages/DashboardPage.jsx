@@ -4,6 +4,7 @@ import { apiRequest } from "../api";
 
 export default function DashboardPage() {
   const [targets, setTargets] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [domain, setDomain] = useState("");
   const [error, setError] = useState("");
   const token = localStorage.getItem("reconx_token");
@@ -18,8 +19,18 @@ export default function DashboardPage() {
     }
   }
 
+  async function fetchNotifications() {
+    try {
+      const data = await apiRequest("/notifications", { token });
+      setNotifications(data);
+    } catch (err) {
+      // Ignore errors
+    }
+  }
+
   useEffect(() => {
     fetchTargets();
+    fetchNotifications();
   }, []);
 
   async function onAddTarget(e) {
@@ -62,6 +73,19 @@ export default function DashboardPage() {
       </form>
 
       {error && <p className="error">{error}</p>}
+
+      {notifications.length > 0 && (
+        <div className="card">
+          <h2>Notifications</h2>
+          <ul>
+            {notifications.slice(0, 5).map((n) => (
+              <li key={n.id} className={n.read ? "" : "unread"}>
+                {n.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="card">
         <h2>Targets</h2>

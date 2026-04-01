@@ -22,6 +22,37 @@ def parse_httpx_live_output(stdout: str) -> list[str]:
     return sorted(hosts)
 
 
+def parse_httpx_enrich_output(stdout: str) -> dict[str, dict]:
+    enrich_data: dict[str, dict] = {}
+    known_cdn_waf = {"cloudflare", "akamai", "fastly", "cloudfront", "incapsula", "sucuri", "imperva", "stackpath"}
+    for line in stdout.splitlines():
+        row = line.strip()
+        if not row:
+            continue
+        try:
+            payload = json.loads(row)
+        except json.JSONDecodeError:
+            continue
+        host = (payload.get("input") or "").strip().lower()
+        if host:
+            tech = payload.get("tech", [])
+            cdn = payload.get("cdn", {}).get("name") if payload.get("cdn") else None
+            waf = None
+            for t in tech:
+                if t.lower() in known_cdn_waf:
+                    waf = t
+                    break
+            cdn_waf = cdn or waf
+            enrich_data[host] = {
+                "ip": payload.get("a", [None])[0] if payload.get("a") else None,
+                "tech_stack": tech,
+                "cdn": cdn,
+                "waf": waf,
+                "cdn_waf": cdn_waf,
+            }
+    return enrich_data
+
+
 def parse_gau_output(stdout: str) -> list[str]:
     return sorted({line.strip() for line in stdout.splitlines() if line.strip()})
 

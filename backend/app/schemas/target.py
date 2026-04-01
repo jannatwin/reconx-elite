@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, Field
 
 
 class TargetCreate(BaseModel):
@@ -10,6 +10,9 @@ class TargetCreate(BaseModel):
 class SubdomainOut(BaseModel):
     hostname: str
     is_live: int
+    ip: str | None = None
+    tech_stack: list | None = None
+    cdn_waf: str | None = None
 
     class Config:
         from_attributes = True
@@ -17,6 +20,9 @@ class SubdomainOut(BaseModel):
 
 class EndpointOut(BaseModel):
     url: str
+    category: str | None = None
+    tags: list | None = None
+    is_interesting: bool = False
 
     class Config:
         from_attributes = True
@@ -29,6 +35,7 @@ class VulnerabilityOut(BaseModel):
     matched_url: str | None = None
     host: str | None = None
     description: str | None = None
+    notes: str | None = None
 
     class Config:
         from_attributes = True
@@ -49,6 +56,16 @@ class ScanLogOut(BaseModel):
         from_attributes = True
 
 
+class ScanDiffOut(BaseModel):
+    new_subdomains: list
+    new_endpoints: list
+    new_vulnerabilities: list
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class ScanOut(BaseModel):
     id: int
     status: str
@@ -61,6 +78,7 @@ class ScanOut(BaseModel):
     endpoints: list[EndpointOut] = Field(default_factory=list)
     vulnerabilities: list[VulnerabilityOut] = Field(default_factory=list)
     logs: list["ScanLogOut"] = Field(default_factory=list)
+    diffs: list[ScanDiffOut] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -69,6 +87,7 @@ class ScanOut(BaseModel):
 class TargetOut(BaseModel):
     id: int
     domain: str
+    notes: str | None = None
     created_at: datetime
     scans: list[ScanOut] = Field(default_factory=list)
 

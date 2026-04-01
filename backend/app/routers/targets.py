@@ -37,16 +37,24 @@ def create_target(
     return target
 
 
-@router.get("", response_model=list[TargetOut])
-@limiter.limit("120/minute")
-def list_targets(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    return (
-        db.query(Target)
-        .options(selectinload(Target.scans))
-        .filter(Target.owner_id == user.id)
-        .order_by(Target.created_at.desc())
-        .all()
-    )
+@router.put("/{target_id}", response_model=TargetOut)
+@limiter.limit("60/minute")
+def update_target(
+    target_id: int,
+    payload: dict,  # Allow partial updates
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    target = db.query(Target).filter(Target.id == target_id, Target.owner_id == user.id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Target not found")
+
+    for key, value in payload.items():
+        if hasattr(target, key):
+            setattr(target, key, value)
+    db.commit()
+    db.refresh(target)
+    return target
 
 
 @router.get("/{target_id}", response_model=TargetOut)
@@ -64,6 +72,7 @@ def get_target(
             selectinload(Target.scans).selectinload(Scan.endpoints),
             selectinload(Target.scans).selectinload(Scan.vulnerabilities),
             selectinload(Target.scans).selectinload(Scan.logs),
+            selectinload(Target.scans).selectinload(Scan.diffs),
         )
         .filter(Target.id == target_id, Target.owner_id == user.id)
         .first()

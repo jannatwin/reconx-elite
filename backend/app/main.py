@@ -8,7 +8,7 @@ from app import models  # noqa: F401
 from app.core.config import settings
 from app.core.database import Base, engine
 from app.core.middleware import AuthGuardMiddleware, RequestLoggingMiddleware
-from app.routers import auth, scans, targets
+from app.routers import auth, bookmarks, notifications, reports, scans, schedules, targets, vulnerabilities
 
 # Ensure tables exist for local/dev setup.
 Base.metadata.create_all(bind=engine)
@@ -30,6 +30,11 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(auth.router)
 app.include_router(targets.router)
 app.include_router(scans.router)
+app.include_router(schedules.router)
+app.include_router(notifications.router)
+app.include_router(bookmarks.router)
+app.include_router(vulnerabilities.router)
+app.include_router(reports.router)
 
 
 @app.get("/health")

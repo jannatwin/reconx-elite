@@ -1,6 +1,6 @@
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
-export default function OverviewTab({ summary, severityChartData, progressTimelineData }) {
+export default function OverviewTab({ summary, severityChartData, progressTimelineData, scanHistoryData }) {
   return (
     <>
       <div className="summary-grid">
@@ -51,6 +51,25 @@ export default function OverviewTab({ summary, severityChartData, progressTimeli
           </ResponsiveContainer>
         </div>
       </div>
+
+      {scanHistoryData.length > 1 && (
+        <div className="card">
+          <h3>Scan History</h3>
+          <div className="chart-wrap">
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={scanHistoryData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                <XAxis dataKey="date" stroke="#93c5fd" />
+                <YAxis stroke="#93c5fd" />
+                <Tooltip />
+                <Line type="monotone" dataKey="subdomains" stroke="#22d3ee" strokeWidth={2} />
+                <Line type="monotone" dataKey="endpoints" stroke="#a78bfa" strokeWidth={2} />
+                <Line type="monotone" dataKey="vulnerabilities" stroke="#ef4444" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
     </>
   );
 }

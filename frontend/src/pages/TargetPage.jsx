@@ -16,6 +16,7 @@ export default function TargetPage() {
   const [selectedSeverities, setSelectedSeverities] = useState(["high", "critical"]);
   const [severityFilter, setSeverityFilter] = useState("all");
   const [subdomainFilter, setSubdomainFilter] = useState("all");
+  const [bookmarks, setBookmarks] = useState([]);
   const templateOptions = ["cves", "exposures", "misconfiguration", "fuzzing"];
   const severityOptions = ["low", "medium", "high", "critical"];
 
@@ -24,6 +25,9 @@ export default function TargetPage() {
     try {
       const data = await apiRequest(`/targets/${targetId}`, { token });
       setTarget(data);
+      setTargetNotes(data.notes || "");
+      const bmData = await apiRequest("/bookmarks", { token });
+      setBookmarks(bmData);
       setError("");
     } catch (err) {
       setError(err.message);
@@ -48,17 +52,14 @@ export default function TargetPage() {
     }
   }
 
-  async function triggerConfiguredScan() {
-    setError("");
+  async function toggleBookmark(endpointId) {
+    const existing = bookmarks.find(b => b.endpoint_id === endpointId);
     try {
-      await apiRequest(`/scan/${targetId}/config`, {
-        method: "POST",
-        token,
-        body: {
-          selected_templates: selectedTemplates,
-          severity_filter: selectedSeverities,
-        },
-      });
+      if (existing) {
+        await apiRequest(`/bookmarks/${existing.id}`, { method: "DELETE", token });
+      } else {
+        await apiRequest("/bookmarks", { method: "POST", token, body: { endpoint_id: endpointId } });
+      }
       fetchTarget();
     } catch (err) {
       setError(err.message);
@@ -126,6 +127,29 @@ export default function TargetPage() {
     });
   }, [scanLogs]);
 
+  const scanHistoryData = useMemo(() => {
+    if (!target?.scans) return [];
+    return target.scans
+      .filter((s) => s.status === "completed")
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+      .map((s) => ({
+        date: new Date(s.created_at).toLocaleDateString(),
+        subdomains: s.subdomains.length,
+        endpoints: s.endpoints.length,
+        vulnerabilities: s.vulnerabilities.length,
+      }));
+  }, [target]);
+
+  const newFindings = useMemo(() => {
+    if (!latestScan?.diffs?.length) return null;
+    const diff = latestScan.diffs[0]; // Latest diff
+    return {
+      newSubdomains: diff.new_subdomains || [],
+      newEndpoints: diff.new_endpoints || [],
+      newVulnerabilities: diff.new_vulnerabilities || [],
+    };
+  }, [latestScan]);
+
   const filteredSubdomains = scanSubdomains.filter((row) => {
     if (subdomainFilter === "live") return !!row.is_live;
     if (subdomainFilter === "dead") return !row.is_live;
@@ -166,6 +190,22 @@ export default function TargetPage() {
         <Link to="/">Back</Link>
       </div>
       {target && <h2>{target.domain}</h2>}
+      {target && (
+        <div className="card">
+          <h3>Target Notes</h3>
+          <textarea
+            value={targetNotes}
+            onChange={(e) => setTargetNotes(e.target.value)}
+            placeholder="Add notes about this target..."
+            rows={4}
+          />
+          <button onClick={saveTargetNotes}>Save Notes</button>
+          <div>
+            <a href={`/api/reports/${targetId}/json`} download>Download JSON Report</a>
+            <a href={`/api/reports/${targetId}/pdf`} download>Download PDF Report</a>
+          </div>
+        </div>
+      )}
       {error && <p className="error card">Scan error: {error}</p>}
       <button onClick={triggerScan}>Trigger Default Scan</button>
       <div className="card">
@@ -223,12 +263,25 @@ export default function TargetPage() {
             summary={summary}
             severityChartData={severityChartData}
             progressTimelineData={progressTimelineData}
+            scanHistoryData={scanHistoryData}
           />
         </Suspense>
       )}
 
       {activeTab === "recon" && (
         <>
+          {newFindings && (newFindings.newSubdomains.length > 0 || newFindings.newEndpoints.length > 0) && (
+            <div className="card highlight">
+              <h3>New Findings</h3>
+              {newFindings.newSubdomains.length > 0 && (
+                <p><strong>New Subdomains:</strong> {newFindings.newSubdomains.join(", ")}</p>
+              )}
+              {newFindings.newEndpoints.length > 0 && (
+                <p><strong>New Endpoints:</strong> {newFindings.newEndpoints.slice(0, 5).join(", ")}{newFindings.newEndpoints.length > 5 ? "..." : ""}</p>
+              )}
+            </div>
+          )}
+
           <div className="card">
             <h3>Subdomains</h3>
             <div className="filters-row">
@@ -263,16 +316,29 @@ export default function TargetPage() {
               value={endpointSearch}
               onChange={(e) => setEndpointSearch(e.target.value)}
             />
+            <button onClick={() => navigator.clipboard.writeText(filteredEndpoints.map(e => e.url).join('\n'))}>
+              Copy All URLs (for Burp)
+            </button>
             <table>
               <thead>
                 <tr>
                   <th>URL</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredEndpoints.map((row) => (
                   <tr key={row.url}>
                     <td>{row.url}</td>
+                    <td>
+                      <button onClick={() => navigator.clipboard.writeText(row.url)}>Copy</button>
+                      <button onClick={() => window.open(row.url, '_blank')}>Open</button>
+                      <button onClick={() => window.open(`${row.url}?test=<script>alert(1)</script>`, '_blank')}>XSS Test</button>
+                      <button onClick={() => window.open(`${row.url}?id=1'`, '_blank')}>SQL Test</button>
+                      <button onClick={() => toggleBookmark(row.id)}>
+                        {bookmarks.some(b => b.endpoint_id === row.id) ? "Unbookmark" : "Bookmark"}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -284,6 +350,11 @@ export default function TargetPage() {
       {activeTab === "vulns" && (
         <div className="card">
           <h3>Vulnerabilities</h3>
+          {newFindings?.newVulnerabilities?.length > 0 && (
+            <div className="highlight">
+              <p><strong>New Vulnerabilities:</strong> {newFindings.newVulnerabilities.length} new issues found</p>
+            </div>
+          )}
           <div className="filters-row">
             <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value)}>
               <option value="all">All severities</option>
@@ -302,6 +373,7 @@ export default function TargetPage() {
                 <th>Matched URL</th>
                 <th>Host</th>
                 <th>Description</th>
+                <th>Notes</th>
               </tr>
             </thead>
             <tbody>
@@ -312,6 +384,15 @@ export default function TargetPage() {
                   <td>{row.matched_url || "-"}</td>
                   <td>{row.host || "-"}</td>
                   <td>{row.description || "-"}</td>
+                  <td>
+                    <textarea
+                      value={vulnNotes[row.id] || row.notes || ""}
+                      onChange={(e) => setVulnNotes({ ...vulnNotes, [row.id]: e.target.value })}
+                      placeholder="Add notes..."
+                      rows={2}
+                    />
+                    <button onClick={() => saveVulnNotes(row.id)}>Save</button>
+                  </td>
                 </tr>
               ))}
             </tbody>

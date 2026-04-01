@@ -30,6 +30,20 @@ def run_httpx(hosts: list[str]) -> tuple[list[str], ToolExecutionResult | None]:
     return parse_httpx_live_output(result.stdout), result
 
 
+def run_httpx_enrich(hosts: list[str]) -> tuple[dict[str, dict], ToolExecutionResult | None]:
+    if not hosts:
+        return {}, None
+    result = execute_with_retry(
+        "httpx",
+        ["httpx", "-silent", "-json", "-ip", "-tech-detect", "-cdn"],
+        stdin_payload="\n".join(hosts) + "\n",
+        timeout_seconds=180,
+    )
+    if result.status != "success":
+        return {}, result
+    return parse_httpx_enrich_output(result.stdout), result
+
+
 def run_gau(domain: str) -> tuple[list[str], ToolExecutionResult]:
     result = execute_with_retry("gau", ["gau", "--subs", domain], timeout_seconds=180)
     if result.status != "success":

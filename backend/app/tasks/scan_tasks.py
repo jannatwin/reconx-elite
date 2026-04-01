@@ -1,16 +1,20 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import shlex
 
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
 from app.models.endpoint import Endpoint
+from app.models.notification import Notification
 from app.models.scan import Scan
+from app.models.scan_diff import ScanDiff
 from app.models.scan_log import ScanLog
+from app.models.scheduled_scan import ScheduledScan
 from app.models.subdomain import Subdomain
 from app.models.target import Target
 from app.models.vulnerability import Vulnerability
-from app.services.scan_runner import check_headers, run_gau, run_httpx, run_nuclei, run_subfinder
+from app.services.scan_runner import check_headers, run_gau, run_httpx, run_httpx_enrich, run_nuclei, run_subfinder
+from app.services.intelligence import classify_endpoint, auto_tag_endpoint, is_interesting_endpoint, auto_tag_subdomain
 from app.services.tool_executor import ToolExecutionResult
 from app.tasks.celery_app import celery_app
 
@@ -115,6 +119,32 @@ def scan_target(scan_id: int) -> dict:
                 row.is_live = 1
         db.commit()
 
+        # Enrich live subdomains
+        _update_scan(scan, db, metadata_json={"step": "enrich_subdomains"})
+        enrich_data, enrich_result = run_httpx_enrich(live_hosts)
+        if enrich_result:
+            _log_step(
+                db,
+                scan.id,
+                "enrich_subdomains",
+                enrich_result.status,
+                {"count": len(enrich_data), "parsed_json": {"enrich_data": enrich_data}},
+                enrich_result,
+            )
+        if enrich_result and enrich_result.status != "success":
+            # Don't fail the scan, just log
+            pass
+
+        for row in db.query(Subdomain).filter(Subdomain.scan_id == scan.id, Subdomain.is_live == 1).all():
+            data = enrich_data.get(row.hostname, {})
+            row.ip = data.get("ip")
+            row.tech_stack = data.get("tech_stack", [])
+            row.cdn_waf = data.get("cdn_waf")
+            # Auto-tag subdomains
+            tags = auto_tag_subdomain(row.hostname, row.tech_stack)
+            # For now, store tags in a separate field if needed, but since subdomain doesn't have tags, maybe add later
+        db.commit()
+
         _update_scan(scan, db, metadata_json={"step": "gau"})
         urls, gau_result = run_gau(target.domain)
         _log_step(
@@ -131,7 +161,10 @@ def scan_target(scan_id: int) -> dict:
 
         deduped_urls = sorted(set(urls))
         for url in deduped_urls:
-            db.add(Endpoint(scan_id=scan.id, url=url))
+            category = classify_endpoint(url)
+            tags = auto_tag_endpoint(url)
+            is_interesting = is_interesting_endpoint(category, tags)
+            db.add(Endpoint(scan_id=scan.id, url=url, category=category, tags=tags, is_interesting=is_interesting))
         db.commit()
 
         _update_scan(scan, db, metadata_json={"step": "nuclei"})
@@ -179,12 +212,113 @@ def scan_target(scan_id: int) -> dict:
             db.add(Vulnerability(scan_id=scan.id, **finding))
         db.commit()
 
+        # Compute diff with previous scan
+        previous_scan = (
+            db.query(Scan)
+            .filter(Scan.target_id == scan.target_id, Scan.id != scan.id, Scan.status == "completed")
+            .order_by(Scan.created_at.desc())
+            .first()
+        )
+        if previous_scan:
+            prev_subdomains = {s.hostname for s in previous_scan.subdomains}
+            prev_endpoints = {e.url for e in previous_scan.endpoints}
+            prev_vulns = {(v.template_id, v.matched_url or "", v.matcher_name or "") for v in previous_scan.vulnerabilities}
+
+            current_subdomains = {s.hostname for s in scan.subdomains}
+            current_endpoints = {e.url for e in scan.endpoints}
+            current_vulns = {(v.template_id, v.matched_url or "", v.matcher_name or "") for v in scan.vulnerabilities}
+
+            new_subdomains = list(current_subdomains - prev_subdomains)
+            new_endpoints = list(current_endpoints - prev_endpoints)
+            new_vulns = [
+                {"template_id": v.template_id, "severity": v.severity, "matched_url": v.matched_url, "description": v.description}
+                for v in scan.vulnerabilities
+                if (v.template_id, v.matched_url or "", v.matcher_name or "") not in prev_vulns
+            ]
+
+            if new_subdomains or new_endpoints or new_vulns:
+                diff = ScanDiff(
+                    scan_id=scan.id,
+                    previous_scan_id=previous_scan.id,
+                    new_subdomains=new_subdomains,
+                    new_endpoints=new_endpoints,
+                    new_vulnerabilities=new_vulns,
+                )
+                db.add(diff)
+                db.commit()
+
+                # Create notifications
+                user = target.owner
+                if new_subdomains:
+                    db.add(Notification(
+                        user_id=user.id,
+                        type="new_subdomain",
+                        message=f"New subdomains found for {target.domain}: {', '.join(new_subdomains[:5])}{'...' if len(new_subdomains) > 5 else ''}",
+                        metadata_json={"target_id": target.id, "scan_id": scan.id, "new_subdomains": new_subdomains}
+                    ))
+                if new_vulns:
+                    db.add(Notification(
+                        user_id=user.id,
+                        type="new_vulnerability",
+                        message=f"New vulnerabilities found for {target.domain}: {len(new_vulns)} new issues",
+                        metadata_json={"target_id": target.id, "scan_id": scan.id, "new_vulnerabilities": new_vulns}
+                    ))
+                db.commit()
+
         _update_scan(scan, db, status="completed", metadata_json={"step": "done"})
         return {"status": "completed", "scan_id": scan_id}
     except Exception as exc:  # noqa: BLE001
         scan = db.query(Scan).filter(Scan.id == scan_id).first()
         if scan:
             _update_scan(scan, db, status="failed", error=str(exc))
+        return {"error": str(exc)}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="check_scheduled_scans")
+def check_scheduled_scans() -> dict:
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        due_schedules = db.query(ScheduledScan).filter(
+            ScheduledScan.enabled == True,
+            ScheduledScan.next_run <= now
+        ).all()
+
+        for schedule in due_schedules:
+            # Check if there's already a running scan for this target
+            running = db.query(Scan).filter(
+                Scan.target_id == schedule.target_id,
+                Scan.status.in_(["pending", "running"])
+            ).first()
+            if running:
+                continue
+
+            # Create new scan
+            scan = Scan(
+                target_id=schedule.target_id,
+                status="pending",
+                metadata_json={"step": "queued", "scheduled": True},
+                scan_config_json=schedule.scan_config_json,
+            )
+            db.add(scan)
+            db.commit()
+            db.refresh(scan)
+
+            # Trigger scan
+            scan_target.delay(scan.id)
+
+            # Update schedule next_run
+            if schedule.frequency == "daily":
+                schedule.next_run = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+            elif schedule.frequency == "weekly":
+                schedule.next_run = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(weeks=1)
+            schedule.last_run = now
+            db.commit()
+
+        return {"checked": len(due_schedules)}
+    except Exception as exc:  # noqa: BLE001
         return {"error": str(exc)}
     finally:
         db.close()
