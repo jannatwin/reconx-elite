@@ -43,6 +43,8 @@ class Settings(BaseSettings):
         "trafficmanager.net,fastly.net,readme.io,pantheonsite.io"
     )
 
+    backend_callback_url: str = "http://localhost:8000"
+
     @cached_property
     def cors_allowed_origins_list(self) -> list[str]:
         return [value.strip() for value in self.cors_allowed_origins.split(",") if value.strip()]

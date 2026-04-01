@@ -214,7 +214,7 @@ class OpportunityDetector:
             # Detect SSRF opportunities
             ssrf_indicators = [
                 "url", "uri", "link", "redirect", "fetch", "load", "source",
-                "proxy", "endpoint", "host", "server",
+                "proxy", "endpoint", "host", "server", "next", "dest",
             ]
             if any(indicator in param_lower for indicator in ssrf_indicators):
                 opportunities.append({

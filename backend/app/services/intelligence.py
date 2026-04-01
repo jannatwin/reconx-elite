@@ -42,6 +42,7 @@ ENV_PATTERNS = {
 }
 XSS_PARAM_HINTS = {"q", "query", "search", "keyword", "redirect", "return", "next", "url", "callback"}
 IDOR_PARAM_HINTS = {"id", "user_id", "account_id", "order_id", "project_id", "invoice_id", "doc_id"}
+SSRF_PARAM_HINTS = {"url", "redirect", "next", "dest", "uri", "link", "fetch", "load", "source", "proxy", "endpoint", "host", "server"}
 SECRET_PATTERNS = [
     ("api_key", re.compile(r"(?i)(api[_-]?key|token|secret)[\"'`\s:=]{1,8}([A-Za-z0-9_\-]{12,})")),
     ("aws_key", re.compile(r"(AKIA[0-9A-Z]{16})")),
@@ -148,6 +149,12 @@ def auto_tag_endpoint(normalized_url: str) -> list[str]:
         tags.add("static")
     if ".php" in path:
         tags.add("php")
+    
+    query_pairs = parse_qsl(parsed.query, keep_blank_values=True)
+    query_keys = {key.lower() for key, _ in query_pairs if key}
+    if query_keys & SSRF_PARAM_HINTS:
+        tags.add("ssrf-candidate")
+        
     return sorted(tags)
 
 
@@ -385,6 +392,20 @@ def synthesize_heuristic_findings(endpoints: list, javascript_assets: list, subd
                     "host": endpoint.hostname,
                     "description": "Endpoint looks parameterized around object identifiers and should be reviewed for access-control bypass.",
                     "evidence_json": evidence_base | {"matched_params": sorted(params & IDOR_PARAM_HINTS)},
+                }
+            )
+        if params & SSRF_PARAM_HINTS:
+            findings.append(
+                {
+                    "template_id": "reconx-heuristic-ssrf-candidate",
+                    "severity": "high",
+                    "source": "heuristic",
+                    "confidence": 0.65,
+                    "matcher_name": "ssrf-candidate",
+                    "matched_url": endpoint.url,
+                    "host": endpoint.hostname,
+                    "description": "Endpoint exposes parameters commonly used for URL redirection or fetching remote resources.",
+                    "evidence_json": evidence_base | {"matched_params": sorted(params & SSRF_PARAM_HINTS)},
                 }
             )
         if "login" in tags or "auth" in (endpoint.path or ""):

@@ -275,7 +275,7 @@ def _detect_payload_opportunities(db: Session, scan_id: int) -> None:
                     token = SsrfService.create_token_for_opportunity(db, user_id, None)  # Will be updated with opp ID after creation
 
                     # Replace __TOKEN__ placeholder with actual token and domain
-                    domain = target.domain  # Use target domain as base
+                    domain = settings.backend_callback_url.split("://")[-1]  # Use callback backend URL
                     modified_payloads = []
                     for payload in payloads[:5]:  # Use first 5 SSRF payloads
                         modified_payload = SsrfService.create_payload_with_token(payload, token, domain)

@@ -646,8 +646,9 @@ export default function TargetPage() {
                 <tbody>
                   {filteredEndpoints.map((item) => {
                     const isBookmarked = bookmarks.some((bookmark) => bookmark.endpoint_id === item.id);
+                    const isSsrfRisk = (item.tags || []).includes("ssrf-candidate");
                     return (
-                      <tr key={item.id}>
+                      <tr key={item.id} className={isSsrfRisk ? "ssrf-risk" : ""}>
                         <td>
                           <strong>{item.normalized_url}</strong>
                           <div className="table-subcopy">{(item.tags || []).join(", ") || "general"}</div>
