@@ -7,7 +7,7 @@ const NotificationContext = createContext(null);
 export const useNotifications = () => useContext(NotificationContext);
 
 function NotificationCenter({ children }) {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, accessToken } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const [showNotifications, setShowNotifications] = useState(false);
@@ -17,7 +17,7 @@ function NotificationCenter({ children }) {
   useEffect(() => {
     if (isAuthenticated && user) {
       // Connect to WebSocket
-      websocketService.connect(user.id).then(() => {
+      websocketService.connect(user.id, accessToken).then(() => {
         setConnectionStatus('connected');
       }).catch(error => {
         console.error('Failed to connect WebSocket:', error);
@@ -41,7 +41,7 @@ function NotificationCenter({ children }) {
       websocketService.disconnect();
       setConnectionStatus('disconnected');
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, accessToken]);
 
   const setupEventListeners = () => {
     // Connection events

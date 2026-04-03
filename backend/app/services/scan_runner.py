@@ -45,8 +45,17 @@ def run_httpx_enrich(hosts: list[str]) -> tuple[dict[str, dict], ToolExecutionRe
     return parse_httpx_enrich_output(result.stdout), result
 
 
-def run_gau(domain: str) -> tuple[list[str], ToolExecutionResult]:
-    result = execute_with_retry("gau", ["gau", "--subs", domain], timeout_seconds=180)
+def run_gau(targets: str | list[str]) -> tuple[list[str], ToolExecutionResult]:
+    if isinstance(targets, list):
+        stdin_payload = "\n".join(targets) + "\n"
+        result = execute_with_retry(
+            "gau",
+            ["gau", "--subs"],
+            stdin_payload=stdin_payload,
+            timeout_seconds=180,
+        )
+    else:
+        result = execute_with_retry("gau", ["gau", "--subs", targets], timeout_seconds=180)
     if result.status != "success":
         return [], result
     return parse_gau_output(result.stdout), result

@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -8,15 +9,32 @@ from app import models  # noqa: F401
 from app.core.config import settings
 from app.core.middleware import AuthGuardMiddleware, RequestLoggingMiddleware
 from app.routers import admin, auth, blind_xss, bookmarks, notifications, payloads, reports, scans, schedules, ssrf, targets, ticketing, vulnerabilities, websocket, validation, out_of_band, manual_testing, intelligence, custom_templates, system, advanced_recon
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["X-XSS-Protection"] = "0"
+        response.headers["Content-Security-Policy"] = "default-src 'self'; connect-src 'self' http: https: ws: wss:; img-src 'self' data: https:; script-src 'self'; style-src 'self' 'unsafe-inline'"
+        return response
+
+
 app = FastAPI(title=settings.app_name)
+allowed_origins = settings.cors_allowed_origins_list or ["http://localhost:5173"]
+if "*" in allowed_origins:
+    raise RuntimeError("CORS wildcard origin is not allowed when credentials are enabled")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_allowed_origins_list or ["http://localhost:5173"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(AuthGuardMiddleware)
 app.state.limiter = auth.limiter

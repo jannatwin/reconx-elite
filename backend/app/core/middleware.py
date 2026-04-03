@@ -2,7 +2,6 @@ import logging
 import time
 
 from fastapi import Request, status
-from jose import JWTError
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
@@ -54,8 +53,11 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
                     request.state.user_id = claims.get("sub")
                     if request.state.user_id:
                         request.state.rate_limit_key = f"user:{request.state.user_id}"
-            except JWTError as e:
-                logger.warning(f"JWT validation failed for {request.client.host if request.client else 'unknown'}: {e}")
+            except (ValueError, Exception):
+                logger.warning(
+                    "JWT validation failed for %s",
+                    request.client.host if request.client else "unknown",
+                )
                 if request.url.path.startswith(self.protected_prefixes):
                     return JSONResponse(
                         status_code=status.HTTP_401_UNAUTHORIZED,

@@ -313,3 +313,35 @@ python -m unittest discover -s tests
 - **ISO 27001** - Security framework alignment
 
 Regular security assessments should be conducted to maintain compliance and security posture.
+
+## Post-Remediation Engineering Patterns (Apr 2026)
+
+### Database Session + Transaction Boundaries
+
+- Keep `log_audit_event()` side-effect free (add-only, no internal `commit()`), then commit in the caller's transaction boundary.
+- In API dependencies (`get_db()`), always rollback on exceptions before closing the session.
+- For write endpoints that can conflict under concurrency (scan trigger paths), catch `IntegrityError`, rollback, and return deterministic `409` responses.
+
+### Celery Scan Pipeline Contracts
+
+- `_load_scan()` returns `(scan, target)` tuple and all call-sites must `await` it.
+- Stage payloads must include typed `scan_id` and use guarded access (`dict.get`) for non-required keys.
+- GAU stage accepts multi-host input by stdin (list-aware runner), matching upstream `httpx` output format.
+
+### Scan Concurrency + Metadata Safety
+
+- Enforce one active scan (`pending` or `running`) per target with DB partial unique index (`uq_scans_target_active`).
+- Prefer merged metadata writes (`_merge_metadata`) over raw in-place dict mutation for `Scan.metadata_json`.
+- Keep scan metadata shape stable: `stage`, `stage_index`, `stage_total`, `progress_percent`, `warnings`, `errors`.
+
+### WebSocket Authentication
+
+- WebSocket handshake requires access token (query or bearer header) and `token.sub` must match path `user_id`.
+- Reject missing/invalid token with 44xx close codes before accepting socket.
+- Persist websocket connect/disconnect/error audit records with explicit commits in websocket route handlers.
+
+### Docker Startup and Migrations
+
+- Do not run `alembic upgrade head` in both API and worker startup commands.
+- Use dedicated `migrate` one-shot service and gate app services on migration completion + dependency healthchecks.
+- Keep postgres/redis/backend healthchecks enabled to avoid boot-order races.

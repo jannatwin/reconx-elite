@@ -8,21 +8,24 @@ class WebSocketService {
     this.messageQueue = [];
     this.eventListeners = new Map();
     this.userId = null;
+    this.accessToken = null;
     this.reconnectTimer = null;
   }
 
-  connect(userId) {
+  connect(userId, accessToken) {
     if (this.isConnecting || (this.ws && this.ws.readyState === WebSocket.OPEN)) {
       return Promise.resolve();
     }
 
     this.userId = userId;
+    this.accessToken = accessToken || null;
     this.isConnecting = true;
 
     return new Promise((resolve, reject) => {
       try {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws/${userId}`;
+        const tokenParam = accessToken ? `?token=${encodeURIComponent(accessToken)}` : "";
+        const wsUrl = `${protocol}//${window.location.host}/ws/${userId}${tokenParam}`;
         
         this.ws = new WebSocket(wsUrl);
 
@@ -222,7 +225,7 @@ class WebSocketService {
     
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      this.connect(this.userId).catch(error => {
+      this.connect(this.userId, this.accessToken).catch(error => {
         console.error('Reconnect failed:', error);
       });
     }, delay);
@@ -238,6 +241,10 @@ class WebSocketService {
 
   off(event, callback) {
     if (this.eventListeners.has(event)) {
+      if (!callback) {
+        this.eventListeners.set(event, []);
+        return;
+      }
       const listeners = this.eventListeners.get(event);
       const index = listeners.indexOf(callback);
       if (index > -1) {

@@ -197,6 +197,27 @@ class IntelligenceLearningService:
                     patterns["parameter_types"][key] = param_type
         
         return patterns
+
+    def _extract_subdomain_patterns(self, host_or_url: str) -> Dict[str, Any]:
+        """Extract lightweight subdomain structure patterns."""
+        candidate = host_or_url or ""
+        parsed = urlparse(candidate)
+        host = parsed.netloc or candidate
+        host = host.split(":")[0].strip(".").lower()
+        labels = [label for label in host.split(".") if label]
+
+        subdomain_labels = labels[:-2] if len(labels) > 2 else []
+        root_domain = ".".join(labels[-2:]) if len(labels) >= 2 else host
+
+        return {
+            "root_domain": root_domain,
+            "subdomain_depth": len(subdomain_labels),
+            "subdomain_labels": subdomain_labels,
+            "has_common_env_prefix": bool(
+                subdomain_labels
+                and subdomain_labels[0] in {"dev", "staging", "test", "qa", "api", "admin"}
+            ),
+        }
     
     def _classify_parameter(self, key: str, value: str) -> str:
         """Classify parameter type based on name and value."""

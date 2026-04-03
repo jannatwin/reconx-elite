@@ -60,14 +60,17 @@ export function AuthProvider({ children }) {
 
   const value = useMemo(() => {
     let role = null;
+    let userId = null;
     if (auth?.accessToken) {
       const decoded = decodeJwt(auth.accessToken);
       role = decoded?.role || null;
+      userId = decoded?.sub ? Number(decoded.sub) : null;
     }
     return {
       auth,
       accessToken: auth?.accessToken ?? null,
       refreshToken: auth?.refreshToken ?? null,
+      user: userId ? { id: userId, role } : null,
       isAuthenticated: Boolean(auth?.accessToken),
       role,
       isAdmin: role === "admin",

@@ -33,4 +33,4 @@ COPY backend/app /app/app
 COPY backend/alembic /app/alembic
 COPY backend/alembic.ini /app/alembic.ini
 
-CMD ["sh", "-c", "alembic upgrade head && celery -A app.tasks.celery_app.celery_app worker --loglevel=info"]
+CMD ["sh", "-c", "celery -A app.tasks.celery_app.celery_app worker --loglevel=info"]

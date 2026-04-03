@@ -32,8 +32,8 @@ RUN pip install --no-cache-dir --default-timeout=180 --retries=10 -r /tmp/requir
 COPY backend/app /app/app
 COPY backend/alembic /app/alembic
 COPY backend/alembic.ini /app/alembic.ini
-COPY backend/.env.example /app/.env.example
+
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8000"]

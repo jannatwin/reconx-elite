@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
@@ -76,7 +77,11 @@ def trigger_scan(
         scan_config_json=DEFAULT_SCAN_CONFIG,
     )
     db.add(scan)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Scan already in progress for this target")
     db.refresh(scan)
     start_scan_chain(scan.id)
     log_audit_event(
@@ -86,6 +91,7 @@ def trigger_scan(
         ip_address=request.client.host if request.client else None,
         metadata_json={"target_id": target.id, "scan_id": scan.id, "mode": "default"},
     )
+    db.commit()
     return scan
 
 
@@ -109,7 +115,11 @@ def trigger_scan_with_config(
         },
     )
     db.add(scan)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Scan already in progress for this target")
     db.refresh(scan)
     start_scan_chain(scan.id)
     log_audit_event(
@@ -119,6 +129,7 @@ def trigger_scan_with_config(
         ip_address=request.client.host if request.client else None,
         metadata_json={"target_id": target.id, "scan_id": scan.id, "mode": "configured"},
     )
+    db.commit()
     return scan
 
 

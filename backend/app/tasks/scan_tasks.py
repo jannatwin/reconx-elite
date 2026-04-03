@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 import shlex
 from datetime import datetime, timedelta, timezone
 
 from celery import chain
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
 from app.core.database import get_sessionmaker
 from app.models.ai_report import AIReport
 from app.models.attack_path import AttackPath
+from app.models.blind_xss_hit import BlindXssHit
 from app.models.endpoint import Endpoint
 from app.models.javascript_asset import JavaScriptAsset
 from app.models.notification import Notification
@@ -19,6 +23,7 @@ from app.models.scan_diff import ScanDiff
 from app.models.scan_log import ScanLog
 from app.models.scheduled_scan import ScheduledScan
 from app.models.subdomain import Subdomain
+from app.models.ssrf_signal import SsrfSignal
 from app.models.target import Target
 from app.models.vulnerability import Vulnerability
 from app.services.intelligence_learning import learning_service
@@ -33,6 +38,7 @@ from app.services.intelligence import (
 )
 from app.services.ai_service import (
     analyze_scan_data,
+    analyze_live_hosts,
     analyze_subdomains,
     analyze_javascript_endpoints,
     analyze_nuclei_findings,
@@ -56,6 +62,7 @@ from app.tasks.celery_app import celery_app
 
 STAGES = [("subfinder", 1), ("httpx", 2), ("gau", 3), ("nuclei", 4)]
 TOTAL_STAGES = len(STAGES)
+logger = logging.getLogger(__name__)
 
 
 def _default_metadata(stage: str = "queued", stage_index: int = 0) -> dict:
@@ -69,7 +76,7 @@ def _default_metadata(stage: str = "queued", stage_index: int = 0) -> dict:
     }
 
 
-async def _load_scan(scan_id: int, db: Session) -> Scan | None:
+async def _load_scan(scan_id: int, db: Session) -> tuple[Scan | None, Target | None]:
     scan = (
         db.query(Scan)
         .options(
@@ -81,13 +88,13 @@ async def _load_scan(scan_id: int, db: Session) -> Scan | None:
         .first()
     )
     if not scan:
-        return None
+        return None, None
     
     # Send WebSocket notification when scan starts
     if scan.status == "pending":
         await notify_scan_started(scan.target.owner_id, scan.target.domain, scan.id)
     
-    return scan
+    return scan, scan.target
 
 
 def _merge_metadata(scan: Scan, **updates) -> dict:
@@ -195,17 +202,19 @@ def _upsert_endpoints(db: Session, scan_id: int, records: list[dict]) -> None:
         for row in db.query(Endpoint).filter(Endpoint.scan_id == scan_id).all()
     }
     for record in records:
-        normalized_url = record["normalized_url"]
+        normalized_url = record.get("normalized_url")
+        if not normalized_url:
+            continue
         row = existing.get(normalized_url)
         if row:
-            row.priority_score = max(row.priority_score, record["priority_score"])
-            row.focus_reasons = sorted(set(row.focus_reasons or []) | set(record["focus_reasons"]))
-            row.tags = sorted(set(row.tags or []) | set(record["tags"]))
-            row.is_interesting = row.is_interesting or record["is_interesting"]
-            row.category = row.category if row.category != "general" else record["category"]
-            if row.source == "gau" and record["source"] == "js":
-                row.js_source = record["js_source"] or row.js_source
-            elif row.source == "js" and record["source"] == "gau":
+            row.priority_score = max(row.priority_score, record.get("priority_score", 0))
+            row.focus_reasons = sorted(set(row.focus_reasons or []) | set(record.get("focus_reasons") or []))
+            row.tags = sorted(set(row.tags or []) | set(record.get("tags") or []))
+            row.is_interesting = row.is_interesting or bool(record.get("is_interesting"))
+            row.category = row.category if row.category != "general" else (record.get("category") or row.category)
+            if row.source == "gau" and record.get("source") == "js":
+                row.js_source = record.get("js_source") or row.js_source
+            elif row.source == "js" and record.get("source") == "gau":
                 row.source = "gau"
         else:
             db.add(Endpoint(scan_id=scan_id, **{k: v for k, v in record.items() if not k.startswith("is_")}))
@@ -266,6 +275,10 @@ def _create_attack_paths(db: Session, scan_id: int, attack_paths: list[dict]) ->
 
 def _detect_payload_opportunities(db: Session, scan_id: int) -> None:
     """Detect and store payload testing opportunities for endpoints in this scan."""
+    scan = db.query(Scan).options(selectinload(Scan.target)).filter(Scan.id == scan_id).first()
+    if not scan or not scan.target:
+        return
+    target = scan.target
     endpoints = db.query(Endpoint).filter(Endpoint.scan_id == scan_id).all()
     detector = OpportunityDetector()
     
@@ -469,14 +482,18 @@ async def _generate_ai_reports(db: Session, scan: Scan, all_vulnerabilities: lis
             # Send notification for critical findings
             if vuln.get("severity") == "critical":
                 await notify_critical_vulnerability(
-                    scan.id,
-                    vuln.get("matched_url"),
-                    vuln.get("template_id"),
-                    report_data.get("summary", "")
+                    scan.target.owner_id,
+                    {
+                        "id": db_vuln.id,
+                        "template_id": vuln.get("template_id"),
+                        "severity": vuln.get("severity"),
+                        "matched_url": vuln.get("matched_url"),
+                        "description": report_data.get("summary", ""),
+                    },
                 )
             
-        except Exception as e:
-            logger.error(f"Error generating AI report: {e}")
+        except Exception:
+            logger.exception("Error generating AI report")
             _soft_log(
                 scan, 
                 db, 
@@ -581,7 +598,11 @@ def start_scan_chain(scan_id: int) -> None:
 
 
 @celery_app.task(name="app.tasks.scan_tasks.scan_stage_subfinder")
-async def scan_stage_subfinder(scan_id: int) -> dict:
+def scan_stage_subfinder(scan_id: int) -> dict:
+    return asyncio.run(_scan_stage_subfinder_async(scan_id))
+
+
+async def _scan_stage_subfinder_async(scan_id: int) -> dict:
     db = get_sessionmaker()()
     try:
         scan, target = await _load_scan(scan_id, db)
@@ -622,7 +643,7 @@ async def scan_stage_subfinder(scan_id: int) -> dict:
                     }
                 )
                 # Store AI insights in scan metadata for later use
-                metadata = scan.metadata_json or {}
+                metadata = _merge_metadata(scan)
                 metadata["ai_subdomain_analysis"] = ai_analysis
                 _update_scan(scan, db, metadata_json=metadata)
         except Exception as e:
@@ -634,7 +655,11 @@ async def scan_stage_subfinder(scan_id: int) -> dict:
 
 
 @celery_app.task(name="app.tasks.scan_tasks.scan_stage_httpx")
-async def scan_stage_httpx(payload: dict) -> dict:
+def scan_stage_httpx(payload: dict) -> dict:
+    return asyncio.run(_scan_stage_httpx_async(payload))
+
+
+async def _scan_stage_httpx_async(payload: dict) -> dict:
     # Validate payload structure
     if not isinstance(payload, dict):
         raise ValueError("Invalid payload: expected dictionary")
@@ -717,7 +742,7 @@ async def scan_stage_httpx(payload: dict) -> dict:
                         }
                     )
                     # Store AI insights in scan metadata
-                    metadata = scan.metadata_json or {}
+                    metadata = _merge_metadata(scan)
                     metadata["ai_live_host_analysis"] = ai_analysis
                     _update_scan(scan, db, metadata_json=metadata)
         except Exception as e:
@@ -729,7 +754,11 @@ async def scan_stage_httpx(payload: dict) -> dict:
 
 
 @celery_app.task(name="app.tasks.scan_tasks.scan_stage_gau")
-async def scan_stage_gau(payload: dict) -> dict:
+def scan_stage_gau(payload: dict) -> dict:
+    return asyncio.run(_scan_stage_gau_async(payload))
+
+
+async def _scan_stage_gau_async(payload: dict) -> dict:
     # Validate payload structure
     if not isinstance(payload, dict):
         raise ValueError("Invalid payload: expected dictionary")
@@ -812,7 +841,7 @@ async def scan_stage_gau(payload: dict) -> dict:
                         }
                     )
                     # Store AI insights in scan metadata
-                    metadata = scan.metadata_json or {}
+                    metadata = _merge_metadata(scan)
                     metadata["ai_javascript_analysis"] = ai_analysis
                     _update_scan(scan, db, metadata_json=metadata)
         except Exception as e:
@@ -824,7 +853,11 @@ async def scan_stage_gau(payload: dict) -> dict:
 
 
 @celery_app.task(name="app.tasks.scan_tasks.scan_stage_nuclei")
-async def scan_stage_nuclei(payload: dict) -> dict:
+def scan_stage_nuclei(payload: dict) -> dict:
+    return asyncio.run(_scan_stage_nuclei_async(payload))
+
+
+async def _scan_stage_nuclei_async(payload: dict) -> dict:
     # Validate payload structure
     if not isinstance(payload, dict):
         raise ValueError("Invalid payload: expected dictionary")
@@ -895,7 +928,7 @@ async def scan_stage_nuclei(payload: dict) -> dict:
                         }
                     )
                     # Store AI insights in scan metadata
-                    metadata = scan.metadata_json or {}
+                    metadata = _merge_metadata(scan)
                     metadata["ai_nuclei_analysis"] = ai_analysis
                     _update_scan(scan, db, metadata_json=metadata)
         except Exception as e:
@@ -938,7 +971,7 @@ async def scan_stage_nuclei(payload: dict) -> dict:
         # NEW: Advanced Reconnaissance Stages
         await _run_advanced_recon_stages(db, scan, target)
 
-        refreshed_scan, _ = _load_scan(scan.id, db)
+        refreshed_scan, _ = await _load_scan(scan.id, db)
         if not refreshed_scan:
             return payload
         ranked_attack_paths = rank_attack_paths(refreshed_scan.endpoints, refreshed_scan.vulnerabilities)
@@ -1027,7 +1060,11 @@ def check_scheduled_scans() -> dict:
                 scan_config_json=schedule.scan_config_json or {},
             )
             db.add(scan)
-            db.commit()
+            try:
+                db.commit()
+            except IntegrityError:
+                db.rollback()
+                continue
             db.refresh(scan)
             start_scan_chain(scan.id)
             created += 1
@@ -1182,7 +1219,7 @@ async def _run_advanced_recon_stages(db: Session, scan: Scan, target: Target) ->
                     continue
             
             # Store adaptive results in scan metadata
-            metadata = scan.metadata_json or {}
+            metadata = _merge_metadata(scan)
             metadata["adaptive_analysis"] = adaptive_results
             metadata["advanced_recon_completed"] = datetime.now(timezone.utc).isoformat()
             _update_scan(scan, db, metadata_json=metadata)

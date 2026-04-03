@@ -19,4 +19,3 @@ def log_audit_event(
             metadata_json=metadata_json or {},
         )
     )
-    db.commit()

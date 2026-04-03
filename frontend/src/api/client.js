@@ -33,7 +33,11 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const { response, config } = error;
-    if (!response || response.status !== 401 || config?._retry || config?.url?.includes("/auth/refresh")) {
+    const isAuthEndpoint =
+      config?.url?.includes("/auth/refresh") ||
+      config?.url?.includes("/auth/login") ||
+      config?.url?.includes("/auth/register");
+    if (!response || response.status !== 401 || config?._retry || isAuthEndpoint) {
       throw error;
     }
 
@@ -50,7 +54,7 @@ api.interceptors.response.use(
       return api(config);
     } catch (refreshError) {
       logout();
-      throw refreshError;
+      throw error;
     }
   },
 );

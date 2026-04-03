@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.security import decode_token
 from app.models.user import User
 from app.services.websocket import manager, redis_subscriber
 from app.services.audit import log_audit_event
@@ -26,6 +27,23 @@ async def websocket_endpoint(
     WebSocket endpoint for real-time notifications.
     Clients connect to ws://localhost:8000/ws/{user_id}
     """
+    # Validate JWT and bind socket identity to token subject.
+    token = websocket.query_params.get("token")
+    auth_header = websocket.headers.get("authorization", "")
+    if not token and auth_header.lower().startswith("bearer "):
+        token = auth_header[7:].strip()
+    if not token:
+        await websocket.close(code=4401, reason="Missing authentication token")
+        return
+    try:
+        claims = decode_token(token)
+        if claims.get("token_type") != "access" or int(claims.get("sub")) != user_id:
+            await websocket.close(code=4403, reason="Forbidden")
+            return
+    except (ValueError, TypeError):
+        await websocket.close(code=4401, reason="Invalid token")
+        return
+
     # Verify user exists and is valid
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -43,6 +61,7 @@ async def websocket_endpoint(
         ip_address=websocket.client.host if websocket.client else None,
         metadata_json={"user_agent": websocket.headers.get("user-agent", "unknown")}
     )
+    db.commit()
     
     try:
         # Keep the connection alive and handle incoming messages
@@ -85,6 +104,7 @@ async def websocket_endpoint(
             ip_address=websocket.client.host if websocket.client else None,
             metadata_json={"reason": "client_disconnect"}
         )
+        db.commit()
         
         logger.info(f"WebSocket disconnected for user {user_id}")
         
@@ -102,6 +122,7 @@ async def websocket_endpoint(
             ip_address=websocket.client.host if websocket.client else None,
             metadata_json={"error": str(e)}
         )
+        db.commit()
 
 
 async def handle_subscription(websocket: WebSocket, user_id: int, channels: list):

@@ -34,5 +34,8 @@ def get_db():
     db = get_sessionmaker()()
     try:
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
