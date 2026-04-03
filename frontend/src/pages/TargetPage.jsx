@@ -2,9 +2,13 @@ import { startTransition, useDeferredValue, useEffect, useMemo, useState } from 
 import { Link, useParams } from "react-router-dom";
 
 import { api, backendBaseUrl } from "../api/client";
+import AttackPathVisualization from "../components/AttackPathVisualization";
 import BlindHitsPanel from "../components/BlindHitsPanel";
 import OverviewTab from "../components/OverviewTab";
+import SubdomainTreeMap from "../components/SubdomainTreeMap";
 import TestSuggestionsPanel from "../components/TestSuggestionsPanel";
+import TicketingIntegration from "../components/TicketingIntegration";
+import VulnerabilityHeatmap from "../components/VulnerabilityHeatmap";
 
 const templateOptions = ["cves", "exposures", "misconfiguration", "fuzzing"];
 const severityOptions = ["low", "medium", "high", "critical"];
@@ -472,6 +476,8 @@ export default function TargetPage() {
           ["vulnerabilities", "Vulnerabilities"],
           ["surface", "Attack Surface"],
           ["paths", "Attack Paths"],
+          ["visualizations", "Visualizations"],
+          ["ticketing", "Ticketing"],
           ["blind-xss", "Blind XSS"],
         ].map(([value, label]) => (
           <button
@@ -728,6 +734,36 @@ export default function TargetPage() {
             </section>
           )}
         </section>
+      ) : null}
+
+      {activeTab === "visualizations" ? (
+        <div className="visualizations-container">
+          <AttackPathVisualization 
+            attackPaths={attackPaths}
+            vulnerabilities={vulnerabilities}
+            endpoints={endpoints}
+            subdomains={subdomains}
+          />
+          
+          <SubdomainTreeMap 
+            subdomains={subdomains}
+            vulnerabilities={vulnerabilities}
+            endpoints={endpoints}
+          />
+          
+          <VulnerabilityHeatmap 
+            vulnerabilities={vulnerabilities}
+            endpoints={endpoints}
+            subdomains={subdomains}
+          />
+        </div>
+      ) : null}
+
+      {activeTab === "ticketing" ? (
+        <TicketingIntegration 
+          vulnerabilities={vulnerabilities}
+          targetDomain={target?.domain}
+        />
       ) : null}
 
       {activeTab === "blind-xss" ? (

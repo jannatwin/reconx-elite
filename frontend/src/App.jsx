@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
 import DashboardPage from "./pages/DashboardPage";
 import LoginPage from "./pages/LoginPage";
+import NotificationCenter from "./components/NotificationCenter";
 import TargetPage from "./pages/TargetPage";
 
 function ProtectedRoute({ children }) {
@@ -57,7 +58,9 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppRoutes />
+      <NotificationCenter>
+        <AppRoutes />
+      </NotificationCenter>
     </AuthProvider>
   );
 }

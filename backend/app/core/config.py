@@ -35,8 +35,25 @@ class Settings(BaseSettings):
     write_rate_limit: str = "60/minute"
     scan_rate_limit: str = "12/minute"
     report_rate_limit: str = "30/minute"
+    ticketing_rate_limit: str = "20/minute"
 
     scheduled_scan_poll_minutes: int = 10
+
+    # Ticketing integration settings
+    jira_url: str = ""
+    jira_username: str = ""
+    jira_api_token: str = ""
+    jira_project_key: str = ""
+    jira_issue_type: str = "Bug"
+
+    github_token: str = ""
+    github_repository: str = ""
+    github_assignee: str = ""
+
+    gitlab_url: str = "https://gitlab.com"
+    gitlab_token: str = ""
+    gitlab_project_id: str = ""
+    gitlab_assignee_id: str = ""
 
     takeover_cname_indicators: str = (
         "amazonaws.com,azurewebsites.net,herokudns.com,github.io,cloudfront.net,"

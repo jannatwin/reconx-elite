@@ -29,6 +29,12 @@ from app.services.intelligence import (
     select_javascript_assets,
     synthesize_heuristic_findings,
 )
+from app.services.websocket import (
+    notify_scan_completed,
+    notify_scan_failed,
+    notify_critical_vulnerability,
+    notify_scan_started
+)
 from app.services.blind_xss_service import BlindXssService
 from app.services.payload_generator import PayloadGenerator
 from app.services.payload_tester import OpportunityDetector
@@ -52,16 +58,11 @@ def _default_metadata(stage: str = "queued", stage_index: int = 0) -> dict:
     }
 
 
-def _load_scan(scan_id: int, db: Session) -> tuple[Scan | None, Target | None]:
+async def _load_scan(scan_id: int, db: Session) -> Scan | None:
     scan = (
         db.query(Scan)
         .options(
             selectinload(Scan.target),
-            selectinload(Scan.subdomains),
-            selectinload(Scan.endpoints),
-            selectinload(Scan.vulnerabilities),
-            selectinload(Scan.javascript_assets),
-            selectinload(Scan.attack_paths),
             selectinload(Scan.logs),
             selectinload(Scan.diffs),
         )
@@ -69,8 +70,13 @@ def _load_scan(scan_id: int, db: Session) -> tuple[Scan | None, Target | None]:
         .first()
     )
     if not scan:
-        return None, None
-    return scan, scan.target
+        return None
+    
+    # Send WebSocket notification when scan starts
+    if scan.status == "pending":
+        await notify_scan_started(scan.target.owner_id, scan.target.domain, scan.id)
+    
+    return scan
 
 
 def _merge_metadata(scan: Scan, **updates) -> dict:
@@ -415,10 +421,10 @@ def start_scan_chain(scan_id: int) -> None:
 
 
 @celery_app.task(name="app.tasks.scan_tasks.scan_stage_subfinder")
-def scan_stage_subfinder(scan_id: int) -> dict:
+async def scan_stage_subfinder(scan_id: int) -> dict:
     db = get_sessionmaker()()
     try:
-        scan, target = _load_scan(scan_id, db)
+        scan, target = await _load_scan(scan_id, db)
         if not scan or not target:
             return {"scan_id": scan_id, "subdomains": []}
         _set_stage(scan, db, "subfinder", 1)
@@ -560,11 +566,11 @@ def scan_stage_gau(payload: dict) -> dict:
 
 
 @celery_app.task(name="app.tasks.scan_tasks.scan_stage_nuclei")
-def scan_stage_nuclei(payload: dict) -> dict:
+async def scan_stage_nuclei(payload: dict) -> dict:
     db = get_sessionmaker()()
     try:
         scan_id = payload["scan_id"]
-        scan, target = _load_scan(scan_id, db)
+        scan, target = await _load_scan(scan_id, db)
         if not scan or not target:
             return payload
         _set_stage(scan, db, "nuclei", 4)
@@ -659,7 +665,7 @@ def scan_stage_nuclei(payload: dict) -> dict:
         except Exception as e:
             _soft_log(scan, db, "payload_opportunity_detection", {"count": 0}, warning=str(e)[:200])
 
-        refreshed_scan, _ = _load_scan(scan.id, db)
+        refreshed_scan, _ = await _load_scan(scan.id, db)
         if refreshed_scan:
             _compute_diff_and_notifications(db, refreshed_scan, target)
             metadata = _merge_metadata(
@@ -669,6 +675,27 @@ def scan_stage_nuclei(payload: dict) -> dict:
                 progress_percent=100,
             )
             _update_scan(refreshed_scan, db, status="completed", metadata_json=metadata)
+            
+            # Send WebSocket notification for scan completion
+            results = {
+                "subdomains_count": len(refreshed_scan.subdomains),
+                "vulnerabilities_count": len(refreshed_scan.vulnerabilities),
+                "endpoints_count": len(refreshed_scan.endpoints),
+                "attack_paths_count": len(refreshed_scan.attack_paths)
+            }
+            await notify_scan_completed(target.owner_id, target.domain, refreshed_scan.id, results)
+            
+            # Send notifications for critical vulnerabilities
+            for vuln in refreshed_scan.vulnerabilities:
+                if vuln.severity == "critical":
+                    await notify_critical_vulnerability(target.owner_id, {
+                        "id": vuln.id,
+                        "template_id": vuln.template_id,
+                        "severity": vuln.severity,
+                        "matched_url": vuln.matched_url,
+                        "description": vuln.description
+                    })
+            
         return {"scan_id": scan.id, "status": "completed"}
     finally:
         db.close()
