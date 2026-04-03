@@ -5,6 +5,7 @@ import { api, backendBaseUrl } from "../api/client";
 import AttackPathVisualization from "../components/AttackPathVisualization";
 import BlindHitsPanel from "../components/BlindHitsPanel";
 import OverviewTab from "../components/OverviewTab";
+import ScanAiInsightsPanel from "../components/ScanAiInsightsPanel";
 import SubdomainTreeMap from "../components/SubdomainTreeMap";
 import TestSuggestionsPanel from "../components/TestSuggestionsPanel";
 import TicketingIntegration from "../components/TicketingIntegration";
@@ -346,6 +347,8 @@ export default function TargetPage() {
       {error ? <p className="error-text panel-card">{error}</p> : null}
 
       <section className="layout-grid">
+        <ScanAiInsightsPanel scan={latestScan} />
+
         <article className="panel-card">
           <h2>Target notes</h2>
           <textarea

@@ -42,6 +42,7 @@ from app.services.ai_service import (
     analyze_subdomains,
     analyze_javascript_endpoints,
     analyze_nuclei_findings,
+    build_javascript_asset_summaries_for_ai,
     generate_elite_vulnerability_report,
     estimate_bounty_potential,
     _should_generate_report,
@@ -825,8 +826,11 @@ async def _scan_stage_gau_async(payload: dict) -> dict:
         try:
             js_urls = [row["url"] for row in js_candidates if row.get("url")]
             endpoint_urls = [row["normalized_url"] for row in normalized + derived_endpoints]
-            if js_urls or endpoint_urls:
-                ai_analysis = await analyze_javascript_endpoints(js_urls, endpoint_urls)
+            if js_urls or endpoint_urls or asset_rows:
+                js_summaries = build_javascript_asset_summaries_for_ai(asset_rows) if asset_rows else []
+                ai_analysis = await analyze_javascript_endpoints(
+                    js_urls, endpoint_urls, asset_summaries=js_summaries or None
+                )
                 if ai_analysis and "high_value_targets" in ai_analysis:
                     _soft_log(
                         scan, 

@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     )
 
     gemini_api_key: str = ""
+    # Gemini API resilience and AI input sizing
+    gemini_max_retries: int = 3
+    gemini_retry_base_seconds: float = 15.0
+    gemini_retry_max_sleep_seconds: float = 90.0
+    ai_max_input_chars: int = 12000
     callback_url: str = "http://localhost:8000"
 
     # Advanced Reconnaissance Settings
