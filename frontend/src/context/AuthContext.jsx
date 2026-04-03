@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 import { api, setAuthHandlers } from "../api/client";
+import { decodeJwt } from "../utils/jwt";
 
 const STORAGE_KEY = "reconx_auth";
 const AuthContext = createContext(null);
@@ -57,17 +58,23 @@ export function AuthProvider({ children }) {
     });
   }, [auth]);
 
-  const value = useMemo(
-    () => ({
+  const value = useMemo(() => {
+    let role = null;
+    if (auth?.accessToken) {
+      const decoded = decodeJwt(auth.accessToken);
+      role = decoded?.role || null;
+    }
+    return {
       auth,
       accessToken: auth?.accessToken ?? null,
       refreshToken: auth?.refreshToken ?? null,
       isAuthenticated: Boolean(auth?.accessToken),
+      role,
+      isAdmin: role === "admin",
       login,
       logout,
-    }),
-    [auth],
-  );
+    };
+  }, [auth]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

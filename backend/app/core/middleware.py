@@ -30,6 +30,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
 class AuthGuardMiddleware(BaseHTTPMiddleware):
     protected_prefixes = (
+        "/admin",
         "/targets",
         "/scan",
         "/scans",

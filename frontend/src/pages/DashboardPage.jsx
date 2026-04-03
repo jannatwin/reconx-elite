@@ -10,7 +10,7 @@ export default function DashboardPage() {
   const [domain, setDomain] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { logout } = useAuth();
+  const { logout, isAdmin } = useAuth();
 
   async function loadDashboard() {
     const [{ data: targetRows }, { data: notificationRows }] = await Promise.all([
@@ -64,9 +64,16 @@ export default function DashboardPage() {
           <h1>Recon dashboard</h1>
           <p className="lede">Track targets, live surface changes, and the assets worth manual attention first.</p>
         </div>
-        <button className="ghost-button" onClick={logout} type="button">
-          Logout
-        </button>
+        <div style={{ display: "flex", gap: "1rem" }}>
+          {isAdmin && (
+            <Link to="/admin" className="ghost-button">
+              Admin Panel
+            </Link>
+          )}
+          <button className="ghost-button" onClick={logout} type="button">
+            Logout
+          </button>
+        </div>
       </header>
 
       <section className="summary-strip">

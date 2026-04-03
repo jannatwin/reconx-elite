@@ -7,7 +7,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from app import models  # noqa: F401
 from app.core.config import settings
 from app.core.middleware import AuthGuardMiddleware, RequestLoggingMiddleware
-from app.routers import auth, blind_xss, bookmarks, notifications, payloads, reports, scans, schedules, ssrf, targets, vulnerabilities
+from app.routers import admin, auth, blind_xss, bookmarks, notifications, payloads, reports, scans, schedules, ssrf, targets, vulnerabilities
 app = FastAPI(title=settings.app_name)
 app.add_middleware(
     CORSMiddleware,
@@ -23,6 +23,7 @@ app.state.limiter = auth.limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.include_router(auth.router)
+app.include_router(admin.router)
 app.include_router(targets.router)
 app.include_router(scans.router)
 app.include_router(schedules.router)
