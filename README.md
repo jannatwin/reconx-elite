@@ -145,81 +145,46 @@ The provided Dockerfiles install pinned versions of all four tools.
 
 ## Environment setup
 
-### 🔐 Step 1: Set up AI Integration (Required for AI features)
-
 **⚠️ SECURITY WARNING**: Never commit API keys or secrets to version control!
-
-### 🚀 Quick Start (Advanced Setup)
 
 ### Prerequisites
 
-- Docker & Docker Compose
-- Python 3.8+
+- Docker and Docker Compose
+- Python 3.8+ (for local dev without Docker)
 - Git
 
-### Step 1: Environment Setup
-
-**⚠️ SECURITY WARNING**: Never commit API keys or secrets to version control!
-
-#### Option A: Advanced Auto Setup (Recommended)
+### Step 1: Configure environment
 
 ```bash
-# Clone the repository
 git clone <repository-url>
 cd reconx-elite
-
-# Run the advanced setup script
-chmod +x setup_advanced.sh
-./setup_advanced.sh
-```
-
-The advanced setup script will:
-
-- ✅ Configure environment variables
-- ✅ Build all Docker services
-- ✅ Run database migrations
-- ✅ Validate system health
-- ✅ Test all advanced features
-
-#### Option B: Manual Setup
-
-```bash
-# Copy environment template
 cp .env.example .env
-
-# Edit .env with your configuration
-# Required for AI features:
-GEMINI_API_KEY=your-gemini-api-key-here
-
-# Optional advanced settings:
-CALLBACK_URL=http://localhost:8000  # For OOB interactions
 ```
 
-### Step 2: Get Gemini API Key (for AI Features)
+Edit `.env` with your settings. For AI features, set `GEMINI_API_KEY`. Optional: `CALLBACK_URL` (or equivalent) for out-of-band callbacks as documented in `.env.example`.
+
+### Step 2: Gemini API key (AI features)
 
 1. Visit [Google AI Studio](https://makersuite.google.com/app/apikey)
-2. Create a new API key
-3. Add it to your `.env` file
+2. Create an API key
+3. Add it to `.env` as `GEMINI_API_KEY=...`
 
-### Step 3: Start Services
-
-```bash
-# Build and start all services
-docker-compose up --build
-
-# Or use the setup script
-./setup_advanced.sh
-```
-
-### Step 4: Validate System
+### Step 3: Start services (Docker)
 
 ```bash
-# Run comprehensive system validation
-python validate_docker_system.py
-
-# Check system status
-curl http://localhost:8000/api/system/health
+docker compose up --build
 ```
+
+Compose runs migrations via the `migrate` service before the API and worker start (see `docker-compose.yml`).
+
+### Step 4: Quick checks
+
+```bash
+curl http://localhost:8000/health
+curl http://localhost:8000/system/health
+```
+
+Open [http://localhost:8000/docs](http://localhost:8000/docs) for interactive API documentation.
 
 ## 🌐 Access Points
 
@@ -228,8 +193,9 @@ After setup, access the platform at:
 - **Frontend**: http://localhost:5173
 - **Backend API**: http://localhost:8000
 - **API Documentation**: http://localhost:8000/docs
-- **System Health**: http://localhost:8000/api/system/health
-- **Admin Validation**: http://localhost:8000/api/system/validation/admin
+- **API liveness**: http://localhost:8000/health
+- **System health (JSON)**: http://localhost:8000/system/health
+- **Admin system validation** (admin JWT required): http://localhost:8000/system/validation/admin
 
 ## Local backend workflow
 
@@ -276,7 +242,7 @@ Expected services:
 - PostgreSQL: `localhost:5432`
 - Redis: `localhost:6379`
 
-Both backend and worker run `alembic upgrade head` on container start so fresh databases pick up the baseline schema automatically.
+Migrations are applied by the dedicated `migrate` service; the API and worker wait for it to finish successfully.
 
 ## 🔍 AI Features Usage
 
@@ -360,15 +326,15 @@ Health:
 
 Advanced Reconnaissance:
 
-- `POST /api/advanced-recon/stealth-config/{target_id}` - Create stealth configuration
-- `GET /api/advanced-recon/stealth-config/{target_id}` - Get stealth configuration
-- `POST /api/advanced-recon/parameter-discovery` - Start parameter discovery
-- `POST /api/advanced-recon/content-fuzzing` - Start content fuzzing
-- `GET /api/advanced-recon/parameters/{target_id}` - Get discovered parameters
-- `GET /api/advanced-recon/fuzzed-endpoints/{target_id}` - Get fuzzed endpoints
-- `POST /api/advanced-recon/wordlists` - Create smart wordlist
-- `GET /api/advanced-recon/wordlists` - Get wordlists
-- `GET /api/advanced-recon/scan-modes` - Get available scan modes
+- `POST /advanced-recon/stealth-config/{target_id}` - Create stealth configuration
+- `GET /advanced-recon/stealth-config/{target_id}` - Get stealth configuration
+- `POST /advanced-recon/parameter-discovery` - Start parameter discovery
+- `POST /advanced-recon/content-fuzzing` - Start content fuzzing
+- `GET /advanced-recon/parameters/{target_id}` - Get discovered parameters
+- `GET /advanced-recon/fuzzed-endpoints/{target_id}` - Get fuzzed endpoints
+- `POST /advanced-recon/wordlists` - Create smart wordlist
+- `GET /advanced-recon/wordlists` - Get wordlists
+- `GET /advanced-recon/scan-modes` - Get available scan modes
 
 Interactive OpenAPI docs are available at [http://localhost:8000/docs](http://localhost:8000/docs).
 
@@ -381,11 +347,10 @@ cd backend
 python -m unittest discover -s tests
 ```
 
-AI Integration Validation:
+From the repository root you can also run:
 
 ```bash
-# Run the validation script
-python validate_ai_integration.py
+python run_backend_tests.py
 ```
 
 Recommended smoke checks after startup:
@@ -407,9 +372,8 @@ Recommended smoke checks after startup:
 ### AI Features Not Working
 
 1. **Check API Key**: Ensure `GEMINI_API_KEY` is set in `.env`
-2. **Validate Setup**: Run `python validate_ai_integration.py`
-3. **Check Logs**: Look for AI-related errors in backend logs
-4. **Rate Limits**: AI features are rate-limited to prevent abuse
+2. **Check Logs**: Look for AI-related errors in backend logs
+3. **Rate Limits**: AI features are rate-limited to prevent abuse
 
 ### Database Migration Issues
 
