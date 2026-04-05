@@ -15,6 +15,23 @@ const templateOptions = ["cves", "exposures", "misconfiguration", "fuzzing"];
 const severityOptions = ["low", "medium", "high", "critical"];
 const severityWeight = { critical: 4, high: 3, medium: 2, low: 1, info: 0 };
 
+const defaultScanModules = {
+  passive_dns: { crtsh_enabled: false, github_subdomains_enabled: false },
+  url_sources: { wayback_enabled: false, katana_enabled: false, katana_depth: 3 },
+  active_dns: { enabled: false, wordlist_path: "", max_fuzz_labels: 200 },
+  content_discovery: { ffuf_dir_enabled: false, base_url: "", wordlist_path: "", max_matches: 200 },
+  port_scan: { enabled: false, ports: "80,443,8080,8443,3000,8000" },
+  screenshots: { enabled: false, delay_seconds: 2 },
+  waf_fingerprint: { enabled: false, sample_size: 10 },
+  nuclei_extras: {
+    include_takeover: false,
+    include_cors: false,
+    include_ssrf: false,
+    include_missing_headers: false,
+  },
+  aggressive: { enabled: false, run_sqlmap: false, run_dalfox: false, run_masscan: false },
+};
+
 export default function TargetPage() {
   const { targetId } = useParams();
   const [target, setTarget] = useState(null);
@@ -36,6 +53,8 @@ export default function TargetPage() {
   const [targetNotes, setTargetNotes] = useState("");
   const [vulnNotes, setVulnNotes] = useState({});
   const [scheduleFrequency, setScheduleFrequency] = useState("daily");
+  const [scanModules, setScanModules] = useState(() => JSON.parse(JSON.stringify(defaultScanModules)));
+  const [scanArtifacts, setScanArtifacts] = useState([]);
 
   async function loadPage() {
     setIsLoading(true);
@@ -74,6 +93,26 @@ export default function TargetPage() {
   }, [targetId]);
 
   const latestScan = target?.scans?.[0] || null;
+
+  useEffect(() => {
+    const sid = latestScan?.id;
+    if (!sid) {
+      setScanArtifacts([]);
+      return;
+    }
+    let cancelled = false;
+    api
+      .get(`/scans/${sid}/artifacts`)
+      .then((res) => {
+        if (!cancelled) setScanArtifacts(res.data || []);
+      })
+      .catch(() => {
+        if (!cancelled) setScanArtifacts([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [latestScan?.id]);
   const subdomains = latestScan?.subdomains || [];
   const endpoints = latestScan?.endpoints || [];
   const vulnerabilities = latestScan?.vulnerabilities || [];
@@ -231,12 +270,40 @@ export default function TargetPage() {
     }
   }
 
+  function pipelineModulesActive(m) {
+    return (
+      m.passive_dns?.crtsh_enabled ||
+      m.passive_dns?.github_subdomains_enabled ||
+      m.url_sources?.wayback_enabled ||
+      m.url_sources?.katana_enabled ||
+      m.active_dns?.enabled ||
+      m.content_discovery?.ffuf_dir_enabled ||
+      m.port_scan?.enabled ||
+      m.screenshots?.enabled ||
+      m.waf_fingerprint?.enabled ||
+      m.nuclei_extras?.include_takeover ||
+      m.nuclei_extras?.include_cors ||
+      m.nuclei_extras?.include_ssrf ||
+      m.nuclei_extras?.include_missing_headers ||
+      m.aggressive?.enabled
+    );
+  }
+
+  function setScanModuleField(section, key, value) {
+    setScanModules((prev) => ({
+      ...prev,
+      [section]: { ...prev[section], [key]: value },
+    }));
+  }
+
   async function triggerConfiguredScan() {
     setError("");
     try {
+      const extended = pipelineModulesActive(scanModules);
       await api.post(`/scan/${targetId}/config`, {
         selected_templates: selectedTemplates,
         severity_filter: selectedSeverities,
+        ...(extended ? { profile: "extended", modules: scanModules } : {}),
       });
       await loadPage();
     } catch (requestError) {
@@ -289,6 +356,9 @@ export default function TargetPage() {
         scan_config: {
           selected_templates: selectedTemplates,
           severity_filter: selectedSeverities,
+          ...(pipelineModulesActive(scanModules)
+            ? { profile: "extended", modules: scanModules }
+            : {}),
         },
       });
       await loadPage();
@@ -339,6 +409,9 @@ export default function TargetPage() {
             Latest stage:{" "}
             <span className={`status-pill status-${latestScan?.status || "idle"}`}>
               {latestScan?.metadata_json?.stage || latestScan?.status || "not-scanned"}
+              {latestScan?.metadata_json?.stage_total
+                ? ` (${latestScan.metadata_json.stage_index || 0}/${latestScan.metadata_json.stage_total})`
+                : ""}
             </span>
           </p>
         </div>
@@ -418,6 +491,185 @@ export default function TargetPage() {
           <button className="primary-button" onClick={triggerConfiguredScan} type="button">
             Trigger configured scan
           </button>
+        </article>
+
+        <article className="panel-card">
+          <h2>Pipeline modules</h2>
+          <p className="muted-copy" style={{ marginBottom: "1rem" }}>
+            Optional stages beyond the default four-step scan. Use the worker-full image and Seclists for active DNS
+            and directory fuzzing.
+          </p>
+          <div className="stack-list" style={{ gap: "0.75rem" }}>
+            <label className="list-row" style={{ alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={scanModules.passive_dns.crtsh_enabled}
+                onChange={(e) => setScanModuleField("passive_dns", "crtsh_enabled", e.target.checked)}
+              />
+              Passive: crt.sh
+            </label>
+            <label className="list-row" style={{ alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={scanModules.passive_dns.github_subdomains_enabled}
+                onChange={(e) =>
+                  setScanModuleField("passive_dns", "github_subdomains_enabled", e.target.checked)
+                }
+              />
+              Passive: GitHub subdomains (needs token in backend env)
+            </label>
+            <label className="list-row" style={{ alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={scanModules.active_dns.enabled}
+                onChange={(e) => setScanModuleField("active_dns", "enabled", e.target.checked)}
+              />
+              Active DNS (ffuf, wordlist / Seclists)
+            </label>
+            <label className="list-row" style={{ alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={scanModules.port_scan.enabled}
+                onChange={(e) => setScanModuleField("port_scan", "enabled", e.target.checked)}
+              />
+              Port scan (nmap)
+            </label>
+            <label className="list-row" style={{ alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={scanModules.screenshots.enabled}
+                onChange={(e) => setScanModuleField("screenshots", "enabled", e.target.checked)}
+              />
+              Screenshots (gowitness)
+            </label>
+            <label className="list-row" style={{ alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={scanModules.waf_fingerprint.enabled}
+                onChange={(e) => setScanModuleField("waf_fingerprint", "enabled", e.target.checked)}
+              />
+              WAF sample (wafw00f)
+            </label>
+            <label className="list-row" style={{ alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={scanModules.url_sources.wayback_enabled}
+                onChange={(e) => setScanModuleField("url_sources", "wayback_enabled", e.target.checked)}
+              />
+              URLs: waybackurls
+            </label>
+            <label className="list-row" style={{ alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={scanModules.url_sources.katana_enabled}
+                onChange={(e) => setScanModuleField("url_sources", "katana_enabled", e.target.checked)}
+              />
+              URLs: katana crawl
+            </label>
+            <label className="list-row" style={{ alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={scanModules.content_discovery.ffuf_dir_enabled}
+                onChange={(e) => setScanModuleField("content_discovery", "ffuf_dir_enabled", e.target.checked)}
+              />
+              Directory fuzz (ffuf)
+            </label>
+            <p className="muted-copy" style={{ marginTop: "0.5rem" }}>
+              Nuclei template tags
+            </p>
+            <label className="list-row" style={{ alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={scanModules.nuclei_extras.include_takeover}
+                onChange={(e) => setScanModuleField("nuclei_extras", "include_takeover", e.target.checked)}
+              />
+              + takeover
+            </label>
+            <label className="list-row" style={{ alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={scanModules.nuclei_extras.include_cors}
+                onChange={(e) => setScanModuleField("nuclei_extras", "include_cors", e.target.checked)}
+              />
+              + cors
+            </label>
+            <label className="list-row" style={{ alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={scanModules.nuclei_extras.include_ssrf}
+                onChange={(e) => setScanModuleField("nuclei_extras", "include_ssrf", e.target.checked)}
+              />
+              + ssrf
+            </label>
+            <label className="list-row" style={{ alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={scanModules.nuclei_extras.include_missing_headers}
+                onChange={(e) =>
+                  setScanModuleField("nuclei_extras", "include_missing_headers", e.target.checked)
+                }
+              />
+              + missing security headers
+            </label>
+            <p className="muted-copy" style={{ marginTop: "0.5rem" }}>
+              Aggressive (requires ENABLE_AGGRESSIVE_SCANNING on backend)
+            </p>
+            <label className="list-row" style={{ alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={scanModules.aggressive.enabled}
+                onChange={(e) => setScanModuleField("aggressive", "enabled", e.target.checked)}
+              />
+              Enable aggressive stage
+            </label>
+            <label className="list-row" style={{ alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={scanModules.aggressive.run_sqlmap}
+                onChange={(e) => setScanModuleField("aggressive", "run_sqlmap", e.target.checked)}
+              />
+              sqlmap (capped)
+            </label>
+            <label className="list-row" style={{ alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={scanModules.aggressive.run_dalfox}
+                onChange={(e) => setScanModuleField("aggressive", "run_dalfox", e.target.checked)}
+              />
+              dalfox (capped)
+            </label>
+            <label className="list-row" style={{ alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={scanModules.aggressive.run_masscan}
+                onChange={(e) => setScanModuleField("aggressive", "run_masscan", e.target.checked)}
+              />
+              masscan (first host only, high risk)
+            </label>
+          </div>
+        </article>
+
+        <article className="panel-card">
+          <div className="panel-header">
+            <h2>Scan artifacts</h2>
+            <span className="pill">{scanArtifacts.length}</span>
+          </div>
+          {scanArtifacts.length ? (
+            <ul className="stack-list">
+              {scanArtifacts.map((a) => (
+                <li className="list-row" key={a.id}>
+                  <div>
+                    <strong>{a.module}</strong> / {a.tool}
+                    <div className="table-subcopy">
+                      {(a.summary_json && JSON.stringify(a.summary_json).slice(0, 120)) || "—"}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted-copy">No artifacts for the latest scan yet.</p>
+          )}
         </article>
 
         <article className="panel-card">

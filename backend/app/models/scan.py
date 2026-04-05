@@ -30,3 +30,4 @@ class Scan(Base):
     custom_results = relationship("CustomTemplateResult", back_populates="scan", cascade="all, delete-orphan")
     discovered_parameters = relationship("DiscoveredParameter", back_populates="scan", cascade="all, delete-orphan")
     fuzzed_endpoints = relationship("FuzzedEndpoint", back_populates="scan", cascade="all, delete-orphan")
+    artifacts = relationship("ScanArtifact", back_populates="scan", cascade="all, delete-orphan")

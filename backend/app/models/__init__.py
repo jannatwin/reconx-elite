@@ -14,6 +14,7 @@ from app.models.notification import Notification
 from app.models.payload_opportunity import PayloadOpportunity
 from app.models.refresh_token import RefreshToken
 from app.models.scan import Scan
+from app.models.scan_artifact import ScanArtifact
 from app.models.scan_diff import ScanDiff
 from app.models.scan_log import ScanLog
 from app.models.scheduled_scan import ScheduledScan
@@ -27,6 +28,7 @@ __all__ = [
     "User",
     "Target",
     "Scan",
+    "ScanArtifact",
     "ScanLog",
     "RefreshToken",
     "AuditLog",

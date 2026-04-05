@@ -32,6 +32,7 @@ from app.services.intelligence import (
     build_subdomain_record,
     filter_nuclei_targets,
     normalize_and_dedupe_urls,
+    normalize_endpoint_url,
     rank_attack_paths,
     select_javascript_assets,
     synthesize_heuristic_findings,
@@ -56,22 +57,52 @@ from app.services.websocket import (
 from app.services.blind_xss_service import BlindXssService
 from app.services.payload_generator import PayloadGenerator
 from app.services.payload_tester import OpportunityDetector
-from app.services.scan_runner import check_headers, run_gau, run_httpx, run_httpx_enrich, run_nuclei, run_subfinder
+from app.services.passive_dns import fetch_crtsh_subdomains, run_github_subdomains_cli
+from app.services.scan_artifact_service import persist_scan_artifact
+from app.services.scan_pipeline import pipeline_stage_total, resolve_pipeline_stages, stage_index_and_total
+from app.services.scan_runner import (
+    check_headers,
+    run_dalfox_url,
+    run_ffuf_dirs,
+    run_ffuf_dns,
+    run_gau,
+    run_gowitness_screenshots,
+    run_httpx,
+    run_httpx_enrich,
+    run_katana,
+    run_masscan_hosts,
+    run_nmap_ports,
+    run_nuclei,
+    run_sqlmap_batch,
+    run_subfinder,
+    run_wafw00f_sample,
+    run_waybackurls,
+)
 from app.services.ssrf_service import SsrfService
 from app.services.tool_executor import ToolExecutionResult
 from app.tasks.celery_app import celery_app
+from app.schemas.scan_modules import parse_modules_from_config
 
-STAGES = [("subfinder", 1), ("httpx", 2), ("gau", 3), ("nuclei", 4)]
-TOTAL_STAGES = len(STAGES)
 logger = logging.getLogger(__name__)
 
 
-def _default_metadata(stage: str = "queued", stage_index: int = 0) -> dict:
+def _nuclei_targets_from_scan_endpoints(db: Session, scan_id: int) -> list[str]:
+    rows = db.query(Endpoint).filter(Endpoint.scan_id == scan_id).all()
+    records: list[dict] = []
+    for row in rows:
+        rec = normalize_endpoint_url(row.url, source=row.source or "gau", js_source=row.js_source)
+        if rec:
+            records.append(rec)
+    return filter_nuclei_targets(records)
+
+
+def _default_metadata(stage: str = "queued", stage_index: int = 0, stage_total: int | None = None) -> dict:
+    total = stage_total if stage_total is not None else 4
     return {
         "stage": stage,
         "stage_index": stage_index,
-        "stage_total": TOTAL_STAGES,
-        "progress_percent": int((stage_index / TOTAL_STAGES) * 100) if stage_index else 0,
+        "stage_total": total,
+        "progress_percent": int((stage_index / total) * 100) if total and stage_index else 0,
         "warnings": [],
         "errors": [],
     }
@@ -115,20 +146,21 @@ def _update_scan(scan: Scan, db: Session, **kwargs) -> None:
     db.refresh(scan)
 
 
-def _set_stage(scan: Scan, db: Session, stage: str, stage_index: int) -> None:
+def _set_stage(scan: Scan, db: Session, stage_name: str) -> None:
+    stage_index, stage_total = stage_index_and_total(scan.metadata_json, stage_name)
     metadata = _merge_metadata(
         scan,
-        stage=stage,
+        stage=stage_name,
         stage_index=stage_index,
-        stage_total=TOTAL_STAGES,
-        progress_percent=int(((stage_index - 1) / TOTAL_STAGES) * 100),
+        stage_total=stage_total,
+        progress_percent=int(((stage_index - 1) / stage_total) * 100) if stage_total else 0,
     )
     logger.info(
         "scan_stage scan_id=%s stage=%s stage_index=%s stage_total=%s progress_percent=%s",
         scan.id,
-        stage,
+        stage_name,
         stage_index,
-        TOTAL_STAGES,
+        stage_total,
         metadata.get("progress_percent"),
     )
     _update_scan(scan, db, status="running", metadata_json=metadata)
@@ -605,27 +637,59 @@ def _compute_diff_and_notifications(db: Session, scan: Scan, target: Target) -> 
     db.commit()
 
 
-def start_scan_chain(scan_id: int) -> None:
-    chain(
-        scan_stage_subfinder.s(scan_id),  # type: ignore
-        scan_stage_httpx.s(),  # type: ignore
-        scan_stage_gau.s(),  # type: ignore
-        scan_stage_nuclei.s(),  # type: ignore
-    ).apply_async()
+@celery_app.task(name="app.tasks.scan_tasks.scan_stage_passive_dns")
+def scan_stage_passive_dns(scan_id: int) -> dict:
+    return asyncio.run(_scan_stage_passive_dns_async(scan_id))
+
+
+async def _scan_stage_passive_dns_async(scan_id: int) -> dict:
+    db = get_sessionmaker()()
+    try:
+        scan, target = await _load_scan(scan_id, db)
+        if not scan or not target:
+            return {"scan_id": scan_id, "passive_subdomains": []}
+        _set_stage(scan, db, "passive_dns")
+        mods = parse_modules_from_config(scan.scan_config_json or {})
+        hosts: list[str] = []
+        if mods.passive_dns.crtsh_enabled:
+            hosts.extend(fetch_crtsh_subdomains(target.domain))
+        if mods.passive_dns.github_subdomains_enabled:
+            hosts.extend(run_github_subdomains_cli(target.domain))
+        seen: dict[str, str] = {}
+        for h in hosts:
+            k = h.lower().rstrip(".")
+            seen.setdefault(k, h)
+        merged = list(seen.values())
+        _log_step(
+            db,
+            scan.id,
+            "passive_dns",
+            "success",
+            {"count": len(merged), "parsed_json": {"passive_subdomains": merged[:200]}},
+        )
+        return {"scan_id": scan.id, "passive_subdomains": merged}
+    finally:
+        db.close()
 
 
 @celery_app.task(name="app.tasks.scan_tasks.scan_stage_subfinder")
-def scan_stage_subfinder(scan_id: int) -> dict:
-    return asyncio.run(_scan_stage_subfinder_async(scan_id))
+def scan_stage_subfinder(payload: int | dict) -> dict:
+    return asyncio.run(_scan_stage_subfinder_async(payload))
 
 
-async def _scan_stage_subfinder_async(scan_id: int) -> dict:
+async def _scan_stage_subfinder_async(payload: int | dict) -> dict:
+    if isinstance(payload, int):
+        scan_id = payload
+        passive_subdomains: list[str] = []
+    else:
+        scan_id = int(payload.get("scan_id") or 0)
+        passive_subdomains = list(payload.get("passive_subdomains") or [])
     db = get_sessionmaker()()
     try:
         scan, target = await _load_scan(scan_id, db)
         if not scan or not target:
             return {"scan_id": scan_id, "subdomains": []}
-        _set_stage(scan, db, "subfinder", 1)
+        _set_stage(scan, db, "subfinder")
         subdomains, result = run_subfinder(target.domain)
         _log_step(
             db,
@@ -639,13 +703,20 @@ async def _scan_stage_subfinder_async(scan_id: int) -> dict:
             _fail_scan(scan, db, stage="subfinder", message=result.error or "subfinder failed")
             raise RuntimeError(result.error or "subfinder failed")
 
-        for host in subdomains:
+        merged_map: dict[str, str] = {}
+        for host in passive_subdomains + subdomains:
+            k = (host or "").lower().rstrip(".")
+            if k:
+                merged_map.setdefault(k, host.lower().rstrip("."))
+        final_hosts = list(merged_map.values())
+
+        for host in final_hosts:
             db.add(Subdomain(scan_id=scan.id, hostname=host))
         db.commit()
         
         # AI-powered subdomain analysis for high-value targets
         try:
-            ai_analysis = await analyze_subdomains(subdomains)
+            ai_analysis = await analyze_subdomains(final_hosts)
             if ai_analysis and "high_value_targets" in ai_analysis:
                 _soft_log(
                     scan, 
@@ -666,7 +737,55 @@ async def _scan_stage_subfinder_async(scan_id: int) -> dict:
         except Exception as e:
             _soft_log(scan, db, "ai_subdomain_analysis", {"error": str(e)[:200]}, warning="AI subdomain analysis failed")
         
-        return {"scan_id": scan.id, "subdomains": subdomains}
+        return {"scan_id": scan.id, "subdomains": final_hosts}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.scan_tasks.scan_stage_active_dns")
+def scan_stage_active_dns(payload: dict) -> dict:
+    return asyncio.run(_scan_stage_active_dns_async(payload))
+
+
+async def _scan_stage_active_dns_async(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid payload")
+    scan_id = payload.get("scan_id")
+    if not scan_id or not isinstance(scan_id, int):
+        raise ValueError("Invalid scan_id")
+    db = get_sessionmaker()()
+    try:
+        scan, target = await _load_scan(scan_id, db)
+        if not scan or not target:
+            return payload
+        _set_stage(scan, db, "active_dns")
+        mods = parse_modules_from_config(scan.scan_config_json or {})
+        wl = mods.active_dns.wordlist_path or ""
+        if not wl and settings.seclists_base_path:
+            wl = f"{settings.seclists_base_path}/Discovery/DNS/subdomains-top1million-110000.txt"
+        max_l = min(mods.active_dns.max_fuzz_labels, settings.scan_active_dns_max_labels)
+        extra, ff_res = run_ffuf_dns(target.domain, wl, max_l)
+        if ff_res:
+            _log_step(
+                db,
+                scan.id,
+                "active_dns",
+                ff_res.status,
+                {"count": len(extra), "parsed_json": {"hosts": extra[:100]}},
+                ff_res,
+            )
+        existing = {r.hostname.lower() for r in db.query(Subdomain).filter(Subdomain.scan_id == scan.id).all()}
+        added = 0
+        for h in extra:
+            k = h.lower().rstrip(".")
+            if k and k not in existing:
+                existing.add(k)
+                db.add(Subdomain(scan_id=scan.id, hostname=k))
+                added += 1
+        db.commit()
+        base_subs = list(payload.get("subdomains") or [])
+        merged = list(dict.fromkeys([s.lower().rstrip(".") for s in base_subs + extra]))
+        return payload | {"subdomains": merged}
     finally:
         db.close()
 
@@ -690,7 +809,7 @@ async def _scan_stage_httpx_async(payload: dict) -> dict:
         scan, target = await _load_scan(scan_id, db)
         if not scan or not target:
             return payload
-        _set_stage(scan, db, "httpx", 2)
+        _set_stage(scan, db, "httpx")
 
         subdomains = payload.get("subdomains") or [row.hostname for row in scan.subdomains]
         if not subdomains:
@@ -770,6 +889,125 @@ async def _scan_stage_httpx_async(payload: dict) -> dict:
         db.close()
 
 
+@celery_app.task(name="app.tasks.scan_tasks.scan_stage_port_scan")
+def scan_stage_port_scan(payload: dict) -> dict:
+    return asyncio.run(_scan_stage_port_scan_async(payload))
+
+
+async def _scan_stage_port_scan_async(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid payload")
+    scan_id = payload.get("scan_id")
+    if not scan_id or not isinstance(scan_id, int):
+        raise ValueError("Invalid scan_id")
+    db = get_sessionmaker()()
+    try:
+        scan, target = await _load_scan(scan_id, db)
+        if not scan or not target:
+            return payload
+        _set_stage(scan, db, "port_scan")
+        mods = parse_modules_from_config(scan.scan_config_json or {})
+        live = payload.get("live_hosts") or []
+        hosts = []
+        for line in live:
+            if isinstance(line, str) and line.startswith("http"):
+                from urllib.parse import urlparse
+
+                h = urlparse(line).hostname
+                if h:
+                    hosts.append(h)
+            elif isinstance(line, str) and line:
+                hosts.append(line.split("/")[0])
+        hosts = list(dict.fromkeys(hosts))
+        out, res = run_nmap_ports(hosts, mods.port_scan.ports)
+        if res:
+            _log_step(db, scan.id, "port_scan", res.status, {"preview_chars": len(out)}, res)
+            persist_scan_artifact(
+                db,
+                scan_id=scan.id,
+                module="port_scan",
+                tool="nmap",
+                summary_json={"hosts_scanned": len(hosts)},
+                text_preview=out[:65000],
+            )
+        return payload
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.scan_tasks.scan_stage_screenshots")
+def scan_stage_screenshots(payload: dict) -> dict:
+    return asyncio.run(_scan_stage_screenshots_async(payload))
+
+
+async def _scan_stage_screenshots_async(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid payload")
+    scan_id = payload.get("scan_id")
+    if not scan_id or not isinstance(scan_id, int):
+        raise ValueError("Invalid scan_id")
+    db = get_sessionmaker()()
+    try:
+        scan, target = await _load_scan(scan_id, db)
+        if not scan or not target:
+            return payload
+        _set_stage(scan, db, "screenshots")
+        mods = parse_modules_from_config(scan.scan_config_json or {})
+        live = payload.get("live_hosts") or []
+        lines = [u for u in live if isinstance(u, str) and u.startswith("http")]
+        out_dir = f"/tmp/gowitness_scan_{scan.id}"
+        _, res = run_gowitness_screenshots(lines, out_dir, mods.screenshots.delay_seconds)
+        if res:
+            _log_step(db, scan.id, "screenshots", res.status, {"out_dir": out_dir}, res)
+            persist_scan_artifact(
+                db,
+                scan_id=scan.id,
+                module="screenshots",
+                tool="gowitness",
+                summary_json={"out_dir": out_dir, "seeds": len(lines)},
+                text_preview=out_dir,
+            )
+        return payload
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.scan_tasks.scan_stage_waf_fingerprint")
+def scan_stage_waf_fingerprint(payload: dict) -> dict:
+    return asyncio.run(_scan_stage_waf_fingerprint_async(payload))
+
+
+async def _scan_stage_waf_fingerprint_async(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid payload")
+    scan_id = payload.get("scan_id")
+    if not scan_id or not isinstance(scan_id, int):
+        raise ValueError("Invalid scan_id")
+    db = get_sessionmaker()()
+    try:
+        scan, target = await _load_scan(scan_id, db)
+        if not scan or not target:
+            return payload
+        _set_stage(scan, db, "waf_fingerprint")
+        mods = parse_modules_from_config(scan.scan_config_json or {})
+        live = [u for u in (payload.get("live_hosts") or []) if isinstance(u, str) and u.startswith("http")]
+        sample = live[: mods.waf_fingerprint.sample_size]
+        out, res = run_wafw00f_sample(sample)
+        if res:
+            _log_step(db, scan.id, "waf_fingerprint", res.status, {"sample": len(sample)}, res)
+            persist_scan_artifact(
+                db,
+                scan_id=scan.id,
+                module="waf_fingerprint",
+                tool="wafw00f",
+                summary_json={"urls": len(sample)},
+                text_preview=out[:65000] if out else None,
+            )
+        return payload
+    finally:
+        db.close()
+
+
 @celery_app.task(name="app.tasks.scan_tasks.scan_stage_gau")
 def scan_stage_gau(payload: dict) -> dict:
     return asyncio.run(_scan_stage_gau_async(payload))
@@ -789,7 +1027,7 @@ async def _scan_stage_gau_async(payload: dict) -> dict:
         scan, target = await _load_scan(scan_id, db)
         if not scan or not target:
             return payload
-        _set_stage(scan, db, "gau", 3)
+        _set_stage(scan, db, "gau")
 
         live_hosts = payload.get("live_hosts", [])
         if not live_hosts:
@@ -872,6 +1110,186 @@ async def _scan_stage_gau_async(payload: dict) -> dict:
         db.close()
 
 
+@celery_app.task(name="app.tasks.scan_tasks.scan_stage_waybackurls")
+def scan_stage_waybackurls(payload: dict) -> dict:
+    return asyncio.run(_scan_stage_waybackurls_async(payload))
+
+
+async def _scan_stage_waybackurls_async(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid payload")
+    scan_id = payload.get("scan_id")
+    if not scan_id or not isinstance(scan_id, int):
+        raise ValueError("Invalid scan_id")
+    db = get_sessionmaker()()
+    try:
+        scan, target = await _load_scan(scan_id, db)
+        if not scan or not target:
+            return payload
+        _set_stage(scan, db, "waybackurls")
+        urls, res = run_waybackurls(target.domain)
+        if res:
+            _log_step(
+                db,
+                scan.id,
+                "waybackurls",
+                res.status,
+                {"count": len(urls), "parsed_json": {"urls": urls[:100]}},
+                res,
+            )
+        if urls:
+            normalized = normalize_and_dedupe_urls(urls, source="wayback")
+            _upsert_endpoints(db, scan.id, normalized)
+        return payload
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.scan_tasks.scan_stage_katana")
+def scan_stage_katana(payload: dict) -> dict:
+    return asyncio.run(_scan_stage_katana_async(payload))
+
+
+async def _scan_stage_katana_async(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid payload")
+    scan_id = payload.get("scan_id")
+    if not scan_id or not isinstance(scan_id, int):
+        raise ValueError("Invalid scan_id")
+    db = get_sessionmaker()()
+    try:
+        scan, target = await _load_scan(scan_id, db)
+        if not scan or not target:
+            return payload
+        _set_stage(scan, db, "katana")
+        mods = parse_modules_from_config(scan.scan_config_json or {})
+        live = [u for u in (payload.get("live_hosts") or []) if isinstance(u, str) and u.startswith("http")]
+        seeds = live[:5] if live else [f"https://{target.domain}"]
+        urls, res = run_katana(seeds, mods.url_sources.katana_depth)
+        if res:
+            _log_step(
+                db,
+                scan.id,
+                "katana",
+                res.status,
+                {"count": len(urls), "parsed_json": {"urls": urls[:100]}},
+                res,
+            )
+        if urls:
+            normalized = normalize_and_dedupe_urls(urls, source="katana")
+            _upsert_endpoints(db, scan.id, normalized)
+        return payload
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.scan_tasks.scan_stage_ffuf_dir")
+def scan_stage_ffuf_dir(payload: dict) -> dict:
+    return asyncio.run(_scan_stage_ffuf_dir_async(payload))
+
+
+async def _scan_stage_ffuf_dir_async(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid payload")
+    scan_id = payload.get("scan_id")
+    if not scan_id or not isinstance(scan_id, int):
+        raise ValueError("Invalid scan_id")
+    db = get_sessionmaker()()
+    try:
+        scan, target = await _load_scan(scan_id, db)
+        if not scan or not target:
+            return payload
+        _set_stage(scan, db, "ffuf_dir")
+        mods = parse_modules_from_config(scan.scan_config_json or {})
+        base = (mods.content_discovery.base_url or "").strip()
+        if not base:
+            base = f"https://{target.domain}"
+        wl = mods.content_discovery.wordlist_path or ""
+        if not wl and settings.seclists_base_path:
+            wl = f"{settings.seclists_base_path}/Discovery/Web-Content/common.txt"
+        max_m = mods.content_discovery.max_matches
+        urls, res = run_ffuf_dirs(base, wl, max_m)
+        if res:
+            _log_step(
+                db,
+                scan.id,
+                "ffuf_dir",
+                res.status,
+                {"count": len(urls), "parsed_json": {"urls": urls[:100]}},
+                res,
+            )
+        if urls:
+            normalized = normalize_and_dedupe_urls(urls, source="ffuf")
+            _upsert_endpoints(db, scan.id, normalized)
+        return payload
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.scan_tasks.scan_stage_aggressive")
+def scan_stage_aggressive(payload: dict) -> dict:
+    return asyncio.run(_scan_stage_aggressive_async(payload))
+
+
+async def _scan_stage_aggressive_async(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid payload")
+    scan_id = payload.get("scan_id")
+    if not scan_id or not isinstance(scan_id, int):
+        raise ValueError("Invalid scan_id")
+    db = get_sessionmaker()()
+    try:
+        scan, target = await _load_scan(scan_id, db)
+        if not scan or not target:
+            return payload
+        if not settings.enable_aggressive_scanning:
+            _soft_log(scan, db, "aggressive", {"skipped": "enable_aggressive_scanning is false"})
+            return payload
+        mods = parse_modules_from_config(scan.scan_config_json or {})
+        if not mods.aggressive.enabled:
+            return payload
+        _set_stage(scan, db, "aggressive")
+        rows = db.query(Endpoint).filter(Endpoint.scan_id == scan.id).all()
+        param_urls = sorted({row.url for row in rows if "?" in (row.url or "") and row.url.startswith(tuple(f"{s}://" for s in settings.allowed_schemes))})
+        previews: list[str] = []
+        if mods.aggressive.run_sqlmap:
+            for url in param_urls[: settings.scan_sqlmap_max_urls]:
+                out, res = run_sqlmap_batch(url)
+                if res:
+                    previews.append(f"=== sqlmap {url}\n{out[:8000]}")
+                    _log_step(db, scan.id, "sqlmap", res.status, {"url": url}, res)
+        if mods.aggressive.run_dalfox:
+            for url in param_urls[: settings.scan_dalfox_max_urls]:
+                out, res = run_dalfox_url(url)
+                if res:
+                    previews.append(f"=== dalfox {url}\n{out[:8000]}")
+                    _log_step(db, scan.id, "dalfox", res.status, {"url": url}, res)
+        if mods.aggressive.run_masscan and payload.get("live_hosts"):
+            live = payload.get("live_hosts") or []
+            hosts = []
+            for line in live:
+                if isinstance(line, str) and "://" not in line and line:
+                    hosts.append(line.split("/")[0])
+            hosts = list(dict.fromkeys(hosts))[: settings.scan_masscan_max_hosts]
+            for h in hosts[:1]:
+                out, res = run_masscan_hosts([h], settings.scan_masscan_rate)
+                if res:
+                    previews.append(f"=== masscan {h}\n{out[:8000]}")
+                    _log_step(db, scan.id, "masscan", res.status, {"host": h}, res)
+        if previews:
+            persist_scan_artifact(
+                db,
+                scan_id=scan.id,
+                module="aggressive",
+                tool="mixed",
+                summary_json={"sections": len(previews)},
+                text_preview="\n\n".join(previews)[:65000],
+            )
+        return payload
+    finally:
+        db.close()
+
+
 @celery_app.task(name="app.tasks.scan_tasks.scan_stage_nuclei")
 def scan_stage_nuclei(payload: dict) -> dict:
     return asyncio.run(_scan_stage_nuclei_async(payload))
@@ -891,15 +1309,17 @@ async def _scan_stage_nuclei_async(payload: dict) -> dict:
         scan, target = await _load_scan(scan_id, db)
         if not scan or not target:
             return payload
-        _set_stage(scan, db, "nuclei", 4)
+        _set_stage(scan, db, "nuclei")
 
-        scan_config = scan.scan_config_json or {}
-        nuclei_targets = payload.get("nuclei_targets", [])
+        scan_config = dict(scan.scan_config_json or {})
+        mods = parse_modules_from_config(scan.scan_config_json or {})
+        scan_config["nuclei_extras"] = mods.nuclei_extras.model_dump()
+        nuclei_targets = _nuclei_targets_from_scan_endpoints(db, scan.id)
+        if not nuclei_targets:
+            nuclei_targets = list(payload.get("nuclei_targets") or [])
         if not nuclei_targets:
             _soft_log(scan, db, "nuclei", {"error": "No targets to scan"}, warning="No nuclei targets available")
-            # Continue with empty targets to complete the scan
-            nuclei_targets = []
-        
+
         vulnerabilities, nuclei_result = run_nuclei(nuclei_targets, scan_config)
         if nuclei_result:
             command_preview = " ".join(shlex.quote(part) for part in nuclei_result.command)
@@ -1021,10 +1441,18 @@ async def _scan_stage_nuclei_async(payload: dict) -> dict:
         refreshed_scan, _ = await _load_scan(scan.id, db)
         if refreshed_scan:
             _compute_diff_and_notifications(db, refreshed_scan, target)
+            stages_done = (refreshed_scan.metadata_json or {}).get("pipeline_stages") or [
+                "subfinder",
+                "httpx",
+                "gau",
+                "nuclei",
+            ]
+            st_total = len(stages_done)
             metadata = _merge_metadata(
                 refreshed_scan,
                 stage="completed",
-                stage_index=TOTAL_STAGES,
+                stage_index=st_total,
+                stage_total=st_total,
                 progress_percent=100,
             )
             _update_scan(refreshed_scan, db, status="completed", metadata_json=metadata)
@@ -1054,6 +1482,49 @@ async def _scan_stage_nuclei_async(payload: dict) -> dict:
         db.close()
 
 
+STAGE_REGISTRY: dict[str, object] = {
+    "passive_dns": scan_stage_passive_dns,
+    "subfinder": scan_stage_subfinder,
+    "active_dns": scan_stage_active_dns,
+    "httpx": scan_stage_httpx,
+    "port_scan": scan_stage_port_scan,
+    "screenshots": scan_stage_screenshots,
+    "waf_fingerprint": scan_stage_waf_fingerprint,
+    "gau": scan_stage_gau,
+    "waybackurls": scan_stage_waybackurls,
+    "katana": scan_stage_katana,
+    "ffuf_dir": scan_stage_ffuf_dir,
+    "aggressive": scan_stage_aggressive,
+    "nuclei": scan_stage_nuclei,
+}
+
+
+def start_scan_chain(scan_id: int) -> None:
+    sm = get_sessionmaker()()
+    try:
+        scan = sm.query(Scan).filter(Scan.id == scan_id).first()
+        if not scan:
+            logger.error("start_scan_chain: scan %s not found", scan_id)
+            return
+        stages = resolve_pipeline_stages(scan.scan_config_json)
+        meta = dict(scan.metadata_json or {})
+        meta["pipeline_stages"] = stages
+        meta["stage_total"] = len(stages)
+        scan.metadata_json = meta
+        sm.add(scan)
+        sm.commit()
+    finally:
+        sm.close()
+
+    task_objs = [STAGE_REGISTRY[name] for name in stages]
+    if not task_objs:
+        logger.error("start_scan_chain: empty pipeline for scan %s", scan_id)
+        return
+    header = task_objs[0].s(scan_id)  # type: ignore[union-attr]
+    tail = [t.s() for t in task_objs[1:]]  # type: ignore[union-attr]
+    chain(header, *tail).apply_async()
+
+
 @celery_app.task(name="app.tasks.scan_tasks.check_scheduled_scans")
 def check_scheduled_scans() -> dict:
     db = get_sessionmaker()()
@@ -1073,11 +1544,12 @@ def check_scheduled_scans() -> dict:
             )
             if running:
                 continue
+            sched_cfg = schedule.scan_config_json or {}
             scan = Scan(
                 target_id=schedule.target_id,
                 status="pending",
-                metadata_json=_default_metadata("queued", 0) | {"scheduled": True},
-                scan_config_json=schedule.scan_config_json or {},
+                metadata_json=_default_metadata("queued", 0, pipeline_stage_total(sched_cfg)) | {"scheduled": True},
+                scan_config_json=sched_cfg,
             )
             db.add(scan)
             try:

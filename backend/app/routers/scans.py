@@ -8,10 +8,12 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.scan import Scan
+from app.models.scan_artifact import ScanArtifact
 from app.models.target import Target
 from app.models.user import User
 from app.routers.auth import limiter
-from app.schemas.scan import ScanConfigRequest, ScanStatusOut
+from app.services.scan_pipeline import pipeline_stage_total
+from app.schemas.scan import ScanArtifactOut, ScanConfigRequest, ScanStatusOut
 from app.services.audit import log_audit_event
 from app.tasks.scan_tasks import start_scan_chain
 
@@ -23,15 +25,28 @@ DEFAULT_SCAN_CONFIG = {
 }
 
 
-def _queued_metadata() -> dict:
+def _queued_metadata(scan_config: dict | None = None) -> dict:
+    total = pipeline_stage_total(scan_config or DEFAULT_SCAN_CONFIG)
     return {
         "stage": "queued",
         "stage_index": 0,
-        "stage_total": 4,
+        "stage_total": total,
         "progress_percent": 0,
         "warnings": [],
         "errors": [],
     }
+
+
+def _build_scan_config_from_request(payload: ScanConfigRequest) -> dict:
+    cfg: dict = {
+        "selected_templates": payload.selected_templates or DEFAULT_SCAN_CONFIG["selected_templates"],
+        "severity_filter": payload.severity_filter or DEFAULT_SCAN_CONFIG["severity_filter"],
+    }
+    if payload.profile is not None:
+        cfg["profile"] = payload.profile
+    if payload.modules is not None:
+        cfg["modules"] = payload.modules.model_dump()
+    return cfg
 
 
 def _guard_scan_request(db: Session, target_id: int, user_id: int) -> Target:
@@ -73,8 +88,8 @@ def trigger_scan(
     scan = Scan(
         target_id=target.id,
         status="pending",
-        metadata_json=_queued_metadata(),
-        scan_config_json=DEFAULT_SCAN_CONFIG,
+        metadata_json=_queued_metadata(DEFAULT_SCAN_CONFIG),
+        scan_config_json=dict(DEFAULT_SCAN_CONFIG),
     )
     db.add(scan)
     try:
@@ -105,14 +120,12 @@ def trigger_scan_with_config(
     user: User = Depends(get_current_user),
 ):
     target = _guard_scan_request(db, target_id, user.id)
+    cfg = _build_scan_config_from_request(payload)
     scan = Scan(
         target_id=target.id,
         status="pending",
-        metadata_json=_queued_metadata(),
-        scan_config_json={
-            "selected_templates": payload.selected_templates,
-            "severity_filter": payload.severity_filter,
-        },
+        metadata_json=_queued_metadata(cfg),
+        scan_config_json=cfg,
     )
     db.add(scan)
     try:
@@ -154,3 +167,26 @@ def get_scan(
         raise HTTPException(status_code=404, detail="Scan not found")
     scan.logs.sort(key=lambda row: row.started_at)
     return scan
+
+
+@router.get("/scans/{scan_id}/artifacts", response_model=list[ScanArtifactOut])
+@limiter.limit(settings.read_rate_limit)
+def list_scan_artifacts(
+    scan_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    scan = db.query(Scan).filter(Scan.id == scan_id).first()
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    target = db.query(Target).filter(Target.id == scan.target_id, Target.owner_id == user.id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    rows = (
+        db.query(ScanArtifact)
+        .filter(ScanArtifact.scan_id == scan_id)
+        .order_by(ScanArtifact.created_at.desc())
+        .all()
+    )
+    return rows

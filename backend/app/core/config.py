@@ -78,6 +78,38 @@ class Settings(BaseSettings):
     content_fuzzing_timeout_seconds: int = 600
     adaptive_analysis_timeout_seconds: int = 300
 
+    # Modular pipeline / passive DNS
+    scan_crtsh_timeout_seconds: float = 90.0
+    scan_crtsh_max_names: int = 5000
+    scan_github_subdomains_timeout_seconds: int = 180
+    scan_github_subdomains_max_names: int = 2000
+
+    # Wordlists (worker-full mounts Seclists here)
+    seclists_base_path: str = ""
+
+    # Tier B — active discovery caps
+    scan_active_dns_max_labels: int = 500
+    scan_ffuf_timeout_seconds: int = 300
+    scan_wayback_max_urls: int = 5000
+    scan_katana_timeout_seconds: int = 600
+    scan_katana_max_urls: int = 2000
+
+    # Tier B — port / screenshots / WAF
+    scan_nmap_timeout_seconds: int = 600
+    scan_nmap_max_hosts: int = 50
+    scan_gowitness_timeout_seconds: int = 900
+    scan_wafw00f_timeout_seconds: int = 120
+
+    # Tier C — aggressive (requires enable_aggressive_scanning)
+    enable_aggressive_scanning: bool = False
+    scan_aggressive_timeout_seconds: int = 900
+    scan_sqlmap_max_urls: int = 3
+    scan_dalfox_max_urls: int = 3
+    scan_masscan_max_hosts: int = 5
+    scan_masscan_rate: int = 500
+
+    # Nuclei OOB (optional self-hosted interactsh)
+    interactsh_server_url: str = ""
 
     @cached_property
     def cors_allowed_origins_list(self) -> list[str]:
