@@ -7,11 +7,39 @@ from typing import Dict, List, Optional
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.models.manual_test_log import ManualTestLog
 from app.models.user import User
 from app.services.manual_tester import manual_tester
 from app.tasks.testing_tasks import manual_request_task, payload_testing_task
 
 router = APIRouter(prefix="/testing", tags=["manual-testing"])
+
+
+def _log_manual_test(
+    db: Session,
+    *,
+    user_id: int,
+    event_type: str,
+    method: Optional[str] = None,
+    url: Optional[str] = None,
+    vulnerability_id: Optional[int] = None,
+    success: bool = False,
+    status_code: Optional[int] = None,
+    summary_json: Optional[dict] = None,
+) -> None:
+    db.add(
+        ManualTestLog(
+            user_id=user_id,
+            event_type=event_type,
+            method=method,
+            url=url,
+            vulnerability_id=vulnerability_id,
+            success=success,
+            status_code=status_code,
+            summary_json=summary_json,
+        )
+    )
+    db.commit()
 
 
 class CustomRequest(BaseModel):
@@ -52,14 +80,25 @@ async def send_custom_request(
 @router.post("/request/sync")
 async def send_custom_request_sync(
     request: CustomRequest,
-    current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Send a custom HTTP request synchronously."""
     
     result = await manual_tester.send_custom_request(**request.dict())
-    
+    ok = bool(result.get("success", False))
+    _log_manual_test(
+        db,
+        user_id=current_user.id,
+        event_type="request_sync",
+        method=request.method,
+        url=request.url,
+        success=ok,
+        status_code=result.get("status_code"),
+        summary_json={"response_time_ms": result.get("response_time_ms")},
+    )
     return {
-        "success": result.get("success", False),
+        "success": ok,
         "request_id": f"manual_{current_user.id}_{hash(request.url)}",
         "result": result,
     }
@@ -95,7 +134,8 @@ async def test_payloads(
 @router.post("/payloads/sync")
 async def test_payloads_sync(
     request: PayloadTestRequest,
-    current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Test multiple payload variations synchronously."""
     
@@ -112,7 +152,20 @@ async def test_payloads_sync(
         request.payload_type,
         request.target_param
     )
-    
+    detections = sum(1 for r in results if r.get("payload_detected", False))
+    _log_manual_test(
+        db,
+        user_id=current_user.id,
+        event_type="payload_sync",
+        method=request.base_request.method,
+        url=request.base_request.url,
+        success=detections > 0,
+        summary_json={
+            "payload_type": request.payload_type,
+            "total_tests": len(results),
+            "detections": detections,
+        },
+    )
     return {
         "success": True,
         "payload_type": request.payload_type,
@@ -211,12 +264,30 @@ async def get_testing_history(
 ):
     """Get manual testing history for the user."""
     
-    # This would need a testing history model
-    # For now, return placeholder
+    rows = (
+        db.query(ManualTestLog)
+        .filter(ManualTestLog.user_id == current_user.id)
+        .order_by(ManualTestLog.created_at.desc())
+        .limit(min(limit, 200))
+        .all()
+    )
     return {
         "user_id": current_user.id,
-        "history": [],
-        "total_tests": 0,
+        "history": [
+            {
+                "id": r.id,
+                "event_type": r.event_type,
+                "method": r.method,
+                "url": r.url,
+                "vulnerability_id": r.vulnerability_id,
+                "success": r.success,
+                "status_code": r.status_code,
+                "summary_json": r.summary_json,
+                "created_at": r.created_at,
+            }
+            for r in rows
+        ],
+        "total_tests": len(rows),
     }
 
 

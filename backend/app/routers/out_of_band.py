@@ -1,6 +1,6 @@
 """API endpoints for out-of-band interactions and callbacks."""
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from typing import Dict, List, Optional
 
@@ -62,11 +62,11 @@ async def receive_callback(
 
 @router.post("/generate-callback")
 async def generate_callback(
-    interaction_type: str,
-    scan_id: Optional[int] = None,
-    vulnerability_id: Optional[int] = None,
+    interaction_type: str = Query(..., description="ssrf, blind_xss, or dns"),
+    scan_id: Optional[int] = Query(None),
+    vulnerability_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Generate a new callback URL for tracking interactions."""
     

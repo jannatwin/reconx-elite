@@ -1,6 +1,8 @@
 """API endpoints for advanced reconnaissance features."""
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+import json
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from typing import Dict, List, Optional
@@ -11,9 +13,7 @@ from app.models.user import User
 from app.models.target import Target
 from app.models.scan import Scan
 from app.models.advanced_recon import StealthConfig, DiscoveredParameter, FuzzedEndpoint, SmartWordlist
-from app.services.advanced_recon_engine import (
-    stealth_scanner, parameter_discovery, content_fuzzer, adaptive_scanner
-)
+from app.tasks.advanced_recon_tasks import content_fuzzing_task, parameter_discovery_task
 
 router = APIRouter(prefix="/advanced-recon", tags=["advanced-recon"])
 
@@ -188,9 +188,8 @@ async def get_stealth_config(
 @router.post("/parameter-discovery")
 async def discover_parameters(
     request: ParameterDiscoveryRequest,
-    background_tasks: BackgroundTasks = BackgroundTasks(),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Start parameter discovery on endpoints."""
     
@@ -229,13 +228,11 @@ async def discover_parameters(
         ).first()
         config_id = existing.id if existing else None
     
-    # Queue parameter discovery task
-    background_tasks.add_task(
-        "app.tasks.advanced_recon_tasks.parameter_discovery_task",
+    parameter_discovery_task.delay(
         current_user.id,
         request.target_id,
         request.endpoint_urls,
-        config_id
+        config_id,
     )
     
     return {
@@ -248,9 +245,8 @@ async def discover_parameters(
 @router.post("/content-fuzzing")
 async def fuzz_content(
     request: ContentFuzzingRequest,
-    background_tasks: BackgroundTasks = BackgroundTasks(),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Start content fuzzing on base URLs."""
     
@@ -289,14 +285,12 @@ async def fuzz_content(
         ).first()
         config_id = existing.id if existing else None
     
-    # Queue content fuzzing task
-    background_tasks.add_task(
-        "app.tasks.advanced_recon_tasks.content_fuzzing_task",
+    content_fuzzing_task.delay(
         current_user.id,
         request.target_id,
         request.base_urls,
         request.wordlist_category,
-        config_id
+        config_id,
     )
     
     return {

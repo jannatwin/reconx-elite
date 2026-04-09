@@ -10,7 +10,7 @@ from app.models.user import User
 from app.models.vulnerability import Vulnerability
 from app.models.exploit_validation import ExploitValidation
 from app.services.exploit_validator import validator
-from app.tasks.validation_tasks import validate_vulnerability_task
+from app.tasks.validation_tasks import send_manual_request_task, validate_vulnerability_task
 
 router = APIRouter(prefix="/validation", tags=["exploit-validation"])
 
@@ -103,11 +103,10 @@ async def send_manual_request(
 ):
     """Send a manual HTTP request for testing."""
     
-    # Queue manual request task
     background_tasks.add_task(
-        "app.tasks.validation_tasks.send_manual_request_task",
+        send_manual_request_task,
         current_user.id,
-        request_data
+        request_data,
     )
     
     return {"message": "Manual request task queued"}

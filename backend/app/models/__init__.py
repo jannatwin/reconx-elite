@@ -10,6 +10,7 @@ from app.models.blind_xss_hit import BlindXssHit
 from app.models.bookmark import Bookmark
 from app.models.endpoint import Endpoint
 from app.models.javascript_asset import JavaScriptAsset
+from app.models.manual_test_log import ManualTestLog
 from app.models.notification import Notification
 from app.models.payload_opportunity import PayloadOpportunity
 from app.models.refresh_token import RefreshToken
@@ -56,4 +57,5 @@ __all__ = [
     "ScanDiff",
     "Notification",
     "Bookmark",
+    "ManualTestLog",
 ]

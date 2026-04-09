@@ -8,6 +8,7 @@ import OverviewTab from "../components/OverviewTab";
 import ScanAiInsightsPanel from "../components/ScanAiInsightsPanel";
 import SubdomainTreeMap from "../components/SubdomainTreeMap";
 import TestSuggestionsPanel from "../components/TestSuggestionsPanel";
+import TargetToolsPanel from "../components/TargetToolsPanel";
 import TicketingIntegration from "../components/TicketingIntegration";
 import VulnerabilityHeatmap from "../components/VulnerabilityHeatmap";
 
@@ -782,6 +783,7 @@ export default function TargetPage() {
           ["surface", "Attack Surface"],
           ["paths", "Attack Paths"],
           ["visualizations", "Visualizations"],
+          ["tools", "Advanced tools"],
           ["ticketing", "Ticketing"],
           ["blind-xss", "Blind XSS"],
         ].map(([value, label]) => (
@@ -1090,6 +1092,14 @@ export default function TargetPage() {
             subdomains={subdomains}
           />
         </div>
+      ) : null}
+
+      {activeTab === "tools" ? (
+        <TargetToolsPanel
+          targetId={targetId}
+          scanId={latestScan?.id ?? null}
+          vulnerabilities={vulnerabilities}
+        />
       ) : null}
 
       {activeTab === "ticketing" ? (

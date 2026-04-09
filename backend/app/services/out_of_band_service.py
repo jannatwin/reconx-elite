@@ -22,9 +22,13 @@ logger = logging.getLogger(__name__)
 
 class OutOfBandService:
     """Service for managing out-of-band interactions."""
-    
+
     def __init__(self):
         self.base_callback_url = settings.callback_url or "http://localhost:8000"
+
+    def _oob_callback_url(self, callback_id: str) -> str:
+        base = self.base_callback_url.rstrip("/")
+        return f"{base}/oob/callback/{callback_id}"
     
     def generate_callback(
         self,
@@ -47,8 +51,7 @@ class OutOfBandService:
         # Generate unique callback ID
         callback_id = self._generate_callback_id(user_id, interaction_type)
         
-        # Create callback URL
-        callback_url = f"{self.base_callback_url}/api/callback/{callback_id}"
+        callback_url = self._oob_callback_url(callback_id)
         
         # Generate payload-specific URLs
         payloads = self._generate_payloads(callback_id, interaction_type)
@@ -77,7 +80,7 @@ class OutOfBandService:
         
         if interaction_type == "ssrf":
             # SSRF payloads
-            callback_url = f"{self.base_callback_url}/api/callback/{callback_id}"
+            callback_url = self._oob_callback_url(callback_id)
             payloads.extend([
                 f"http://127.0.0.1/callback/{callback_id}",
                 f"https://127.0.0.1/callback/{callback_id}",
@@ -88,7 +91,7 @@ class OutOfBandService:
         
         elif interaction_type == "blind_xss":
             # Blind XSS payloads
-            callback_url = f"{self.base_callback_url}/api/callback/{callback_id}"
+            callback_url = self._oob_callback_url(callback_id)
             payloads.extend([
                 f"<img src=x onerror=fetch('{callback_url}')>",
                 f"<script>fetch('{callback_url}')</script>",
@@ -118,7 +121,7 @@ class OutOfBandService:
         vulnerability_id: Optional[int] = None
     ) -> OutOfBandInteraction:
         """Create a callback record in the database."""
-        callback_url = f"{self.base_callback_url}/api/callback/{callback_id}"
+        callback_url = self._oob_callback_url(callback_id)
         
         interaction = OutOfBandInteraction(
             user_id=user_id,
