@@ -16,13 +16,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in amd64) goarch=amd64 ;; arm64) goarch=arm64 ;; *) exit 1 ;; esac; \
-    curl -fsSL "https://github.com/projectdiscovery/subfinder/releases/download/v${SUBFINDER_VERSION}/subfinder_${SUBFINDER_VERSION}_linux_${goarch}.zip" -o /tmp/subfinder.zip; \
+    curl -fL --retry 6 --retry-delay 5 --retry-all-errors "https://github.com/projectdiscovery/subfinder/releases/download/v${SUBFINDER_VERSION}/subfinder_${SUBFINDER_VERSION}_linux_${goarch}.zip" -o /tmp/subfinder.zip; \
     unzip -oj /tmp/subfinder.zip subfinder -d /usr/local/bin; \
-    curl -fsSL "https://github.com/projectdiscovery/httpx/releases/download/v${HTTPX_VERSION}/httpx_${HTTPX_VERSION}_linux_${goarch}.zip" -o /tmp/httpx.zip; \
+    curl -fL --retry 6 --retry-delay 5 --retry-all-errors "https://github.com/projectdiscovery/httpx/releases/download/v${HTTPX_VERSION}/httpx_${HTTPX_VERSION}_linux_${goarch}.zip" -o /tmp/httpx.zip; \
     unzip -oj /tmp/httpx.zip httpx -d /usr/local/bin; \
-    curl -fsSL "https://github.com/projectdiscovery/nuclei/releases/download/v${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION}_linux_${goarch}.zip" -o /tmp/nuclei.zip; \
+    curl -fL --retry 6 --retry-delay 5 --retry-all-errors "https://github.com/projectdiscovery/nuclei/releases/download/v${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION}_linux_${goarch}.zip" -o /tmp/nuclei.zip; \
     unzip -oj /tmp/nuclei.zip nuclei -d /usr/local/bin; \
-    curl -fsSL "https://github.com/lc/gau/releases/download/v${GAU_VERSION}/gau_${GAU_VERSION}_linux_${goarch}.tar.gz" -o /tmp/gau.tar.gz; \
+    curl -fL --retry 6 --retry-delay 5 --retry-all-errors "https://github.com/lc/gau/releases/download/v${GAU_VERSION}/gau_${GAU_VERSION}_linux_${goarch}.tar.gz" -o /tmp/gau.tar.gz; \
     tar -xzf /tmp/gau.tar.gz -C /usr/local/bin gau; \
     chmod +x /usr/local/bin/subfinder /usr/local/bin/httpx /usr/local/bin/nuclei /usr/local/bin/gau
 
