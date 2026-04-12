@@ -1,4 +1,4 @@
-import { startTransition, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { api, backendBaseUrl } from "../api/client";
@@ -8,7 +8,6 @@ import OverviewTab from "../components/OverviewTab";
 import ScanAiInsightsPanel from "../components/ScanAiInsightsPanel";
 import SubdomainTreeMap from "../components/SubdomainTreeMap";
 import TestSuggestionsPanel from "../components/TestSuggestionsPanel";
-import TargetToolsPanel from "../components/TargetToolsPanel";
 import TicketingIntegration from "../components/TicketingIntegration";
 import VulnerabilityHeatmap from "../components/VulnerabilityHeatmap";
 
@@ -57,6 +56,8 @@ export default function TargetPage() {
   const [scanModules, setScanModules] = useState(() => JSON.parse(JSON.stringify(defaultScanModules)));
   const [scanArtifacts, setScanArtifacts] = useState([]);
 
+  const intervalRef = useRef(null);
+
   async function loadPage() {
     setIsLoading(true);
     try {
@@ -78,8 +79,15 @@ export default function TargetPage() {
         ),
       );
       setError("");
+      return true;
     } catch (requestError) {
       setError(requestError.response?.data?.detail || "Failed to load target");
+      // Stop polling on failure
+      if (intervalRef.current) {
+        window.clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      return false;
     } finally {
       setIsLoading(false);
     }
@@ -87,10 +95,15 @@ export default function TargetPage() {
 
   useEffect(() => {
     loadPage();
-    const interval = window.setInterval(() => {
+    intervalRef.current = window.setInterval(() => {
       loadPage();
     }, 5000);
-    return () => window.clearInterval(interval);
+    return () => {
+      if (intervalRef.current) {
+        window.clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
   }, [targetId]);
 
   const latestScan = target?.scans?.[0] || null;
@@ -402,7 +415,7 @@ export default function TargetPage() {
     <main className="page-shell">
       <header className="page-header">
         <div>
-          <Link className="text-link" to="/">
+          <Link className="primary-button" to="/">
             Back to dashboard
           </Link>
           <h1>{target?.domain}</h1>
@@ -783,7 +796,6 @@ export default function TargetPage() {
           ["surface", "Attack Surface"],
           ["paths", "Attack Paths"],
           ["visualizations", "Visualizations"],
-          ["tools", "Advanced tools"],
           ["ticketing", "Ticketing"],
           ["blind-xss", "Blind XSS"],
         ].map(([value, label]) => (
@@ -1092,14 +1104,6 @@ export default function TargetPage() {
             subdomains={subdomains}
           />
         </div>
-      ) : null}
-
-      {activeTab === "tools" ? (
-        <TargetToolsPanel
-          targetId={targetId}
-          scanId={latestScan?.id ?? null}
-          vulnerabilities={vulnerabilities}
-        />
       ) : null}
 
       {activeTab === "ticketing" ? (
