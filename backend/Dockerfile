@@ -29,11 +29,17 @@ RUN set -eux; \
 COPY backend/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --default-timeout=180 --retries=10 -r /tmp/requirements.txt
 
-COPY backend/app /app/app
-COPY backend/alembic /app/alembic
-COPY backend/alembic.ini /app/alembic.ini
+RUN groupadd -r appuser && useradd -r -g appuser -u 1001 appuser
 
+COPY --chown=appuser:appuser backend/app /app/app
+COPY --chown=appuser:appuser backend/alembic /app/alembic
+COPY --chown=appuser:appuser backend/alembic.ini /app/alembic.ini
+
+USER appuser
 
 EXPOSE 8000
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl -fsS http://localhost:8000/health || exit 1
 
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8000"]

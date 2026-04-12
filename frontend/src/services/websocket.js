@@ -1,3 +1,5 @@
+import { backendBaseUrl } from "../api/client";
+
 class WebSocketService {
   constructor() {
     this.ws = null;
@@ -23,9 +25,10 @@ class WebSocketService {
 
     return new Promise((resolve, reject) => {
       try {
-        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        // Use backendBaseUrl instead of window.location.host
+        const wsBaseUrl = backendBaseUrl.replace(/^http/, "ws");
         const tokenParam = accessToken ? `?token=${encodeURIComponent(accessToken)}` : "";
-        const wsUrl = `${protocol}//${window.location.host}/ws/${userId}${tokenParam}`;
+        const wsUrl = `${wsBaseUrl}/ws/${userId}${tokenParam}`;
 
         this.ws = new WebSocket(wsUrl);
 
@@ -113,7 +116,12 @@ class WebSocketService {
   }
 
   handleMessage(data) {
+    if (!data || typeof data !== 'object') return;
+
     const { type, data: messageData, timestamp } = data;
+    
+    // Ensure messageData is an object to avoid TypeErrors
+    const safeData = messageData || {};
 
     // Handle different message types
     switch (type) {
@@ -122,47 +130,47 @@ class WebSocketService {
         break;
 
       case "subscription_acknowledged":
-        console.log("Subscribed to channels:", messageData.channels);
-        this.emit("subscribed", messageData);
+        console.log("Subscribed to channels:", safeData.channels);
+        this.emit("subscribed", safeData);
         break;
 
       case "scan_started":
-        this.emit("scanStarted", messageData);
-        this.showNotification("Scan Started", messageData.message, "info");
+        this.emit("scanStarted", safeData);
+        this.showNotification("Scan Started", safeData.message, "info");
         break;
 
       case "scan_completed":
-        this.emit("scanCompleted", messageData);
-        this.showNotification("Scan Completed", messageData.message, "success");
+        this.emit("scanCompleted", safeData);
+        this.showNotification("Scan Completed", safeData.message, "success");
         break;
 
       case "scan_failed":
-        this.emit("scanFailed", messageData);
-        this.showNotification("Scan Failed", messageData.message, "error");
+        this.emit("scanFailed", safeData);
+        this.showNotification("Scan Failed", safeData.message, "error");
         break;
 
       case "critical_vulnerability":
-        this.emit("criticalVulnerability", messageData);
-        this.showNotification("Critical Vulnerability Found", messageData.message, "error", true);
+        this.emit("criticalVulnerability", safeData);
+        this.showNotification("Critical Vulnerability Found", safeData.message, "error", true);
         break;
 
       case "system_alert":
-        this.emit("systemAlert", messageData);
-        this.showNotification(messageData.title || "System Alert", messageData.message, "warning");
+        this.emit("systemAlert", safeData);
+        this.showNotification(safeData.title || "System Alert", safeData.message, "warning");
         break;
 
       case "user_notification":
-        this.emit("userNotification", messageData);
+        this.emit("userNotification", safeData);
         this.showNotification(
-          messageData.title,
-          messageData.message,
-          messageData.notification_type || "info",
+          safeData.title || "Notification",
+          safeData.message,
+          safeData.notification_type || "info",
         );
         break;
 
       case "error":
-        console.error("WebSocket error from server:", messageData);
-        this.emit("serverError", messageData);
+        console.error("WebSocket error from server:", safeData);
+        this.emit("serverError", safeData);
         break;
 
       default:

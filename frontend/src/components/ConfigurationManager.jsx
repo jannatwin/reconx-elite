@@ -38,6 +38,14 @@ export default function ConfigurationManager() {
       "takeover_cname_indicators",
       "scan_nuclei_target_cap",
       "scan_header_probe_cap",
+      "ai_scan_provider",
+      "ai_scan_model",
+      "ai_analyze_provider",
+      "ai_analyze_model",
+      "ai_report_provider",
+      "ai_report_model",
+      "slack_webhook_url",
+      "discord_webhook_url",
     ];
 
     fieldsToCheck.forEach((field) => {
@@ -290,6 +298,130 @@ export default function ConfigurationManager() {
                 }}
               />
             </fieldset>
+          </div>
+
+          <div>
+            <h3>AI Tier Configuration</h3>
+            <div style={{ display: "grid", gap: "1.5rem" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "1.5rem" }}>
+                <div style={{ padding: "1rem", background: "#f9f9f9", borderRadius: "4px", border: "1px solid #eee" }}>
+                  <h4 style={{ margin: "0 0 1rem 0", color: "#0066cc", fontSize: "0.875rem", textTransform: "uppercase" }}>Tier 1: Scanning</h4>
+                  <div style={{ marginBottom: "1rem" }}>
+                    <label style={{ display: "block", fontSize: "0.875rem", marginBottom: "0.25rem", color: "#666" }}>Provider</label>
+                    <select
+                      value={editedConfig.ai_scan_provider}
+                      onChange={(e) => updateField("ai_scan_provider", e.target.value)}
+                      style={{ width: "100%", padding: "0.5rem", borderRadius: "4px", border: "1px solid #ddd" }}
+                    >
+                      <option value="gemini">Google Gemini</option>
+                      <option value="openrouter">OpenRouter</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.875rem", marginBottom: "0.25rem", color: "#666" }}>Model</label>
+                    <input
+                      type="text"
+                      value={editedConfig.ai_scan_model}
+                      onChange={(e) => updateField("ai_scan_model", e.target.value)}
+                      placeholder="e.g. gemini-1.5-flash"
+                      style={{ width: "100%", padding: "0.5rem", borderRadius: "4px", border: "1px solid #ddd" }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ padding: "1rem", background: "#f9f9f9", borderRadius: "4px", border: "1px solid #eee" }}>
+                  <h4 style={{ margin: "0 0 1rem 0", color: "#008800", fontSize: "0.875rem", textTransform: "uppercase" }}>Tier 2: Analysis</h4>
+                  <div style={{ marginBottom: "1rem" }}>
+                    <label style={{ display: "block", fontSize: "0.875rem", marginBottom: "0.25rem", color: "#666" }}>Provider</label>
+                    <select
+                      value={editedConfig.ai_analyze_provider}
+                      onChange={(e) => updateField("ai_analyze_provider", e.target.value)}
+                      style={{ width: "100%", padding: "0.5rem", borderRadius: "4px", border: "1px solid #ddd" }}
+                    >
+                      <option value="gemini">Google Gemini</option>
+                      <option value="openrouter">OpenRouter</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.875rem", marginBottom: "0.25rem", color: "#666" }}>Model</label>
+                    <input
+                      type="text"
+                      value={editedConfig.ai_analyze_model}
+                      onChange={(e) => updateField("ai_analyze_model", e.target.value)}
+                      placeholder="e.g. gpt-4o-mini"
+                      style={{ width: "100%", padding: "0.5rem", borderRadius: "4px", border: "1px solid #ddd" }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ padding: "1rem", background: "#f9f9f9", borderRadius: "4px", border: "1px solid #eee" }}>
+                <h4 style={{ margin: "0 0 1rem 0", color: "#8800cc", fontSize: "0.875rem", textTransform: "uppercase" }}>Tier 3: Reporting</h4>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "1rem" }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.875rem", marginBottom: "0.25rem", color: "#666" }}>Provider</label>
+                    <select
+                      value={editedConfig.ai_report_provider}
+                      onChange={(e) => updateField("ai_report_provider", e.target.value)}
+                      style={{ width: "100%", padding: "0.5rem", borderRadius: "4px", border: "1px solid #ddd" }}
+                    >
+                      <option value="gemini">Google Gemini</option>
+                      <option value="openrouter">OpenRouter</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.875rem", marginBottom: "0.25rem", color: "#666" }}>Model</label>
+                    <input
+                      type="text"
+                      value={editedConfig.ai_report_model}
+                      onChange={(e) => updateField("ai_report_model", e.target.value)}
+                      placeholder="e.g. gpt-4o"
+                      style={{ width: "100%", padding: "0.5rem", borderRadius: "4px", border: "1px solid #ddd" }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3>Notifications</h3>
+            <div style={{ display: "grid", gap: "1.5rem" }}>
+              <fieldset style={{ border: "none", padding: 0, margin: 0 }}>
+                <label style={{ display: "block", marginBottom: "0.5rem" }}>
+                  <strong>Slack Webhook URL</strong>
+                </label>
+                <input
+                  type="password"
+                  value={editedConfig.slack_webhook_url}
+                  onChange={(e) => updateField("slack_webhook_url", e.target.value)}
+                  placeholder="https://hooks.slack.com/services/..."
+                  style={{
+                    width: "100%",
+                    padding: "0.75rem",
+                    border: "1px solid #ddd",
+                    borderRadius: "4px",
+                  }}
+                />
+              </fieldset>
+              <fieldset style={{ border: "none", padding: 0, margin: 0 }}>
+                <label style={{ display: "block", marginBottom: "0.5rem" }}>
+                  <strong>Discord Webhook URL</strong>
+                </label>
+                <input
+                  type="password"
+                  value={editedConfig.discord_webhook_url}
+                  onChange={(e) => updateField("discord_webhook_url", e.target.value)}
+                  placeholder="https://discord.com/api/webhooks/..."
+                  style={{
+                    width: "100%",
+                    padding: "0.75rem",
+                    border: "1px solid #ddd",
+                    borderRadius: "4px",
+                  }}
+                />
+              </fieldset>
+            </div>
           </div>
 
           <div>

@@ -20,33 +20,36 @@ class ReconXLogger:
         """Setup structured logging for the application."""
         
         # Create logs directory
-        log_dir = "logs"
+        log_dir = "/tmp/logs"
         os.makedirs(log_dir, exist_ok=True)
+        
+        # Handlers list
+        handlers = [
+            # Console handler
+            logging.StreamHandler(),
+            # File handler with rotation
+            logging.handlers.RotatingFileHandler(
+                os.path.join(log_dir, "reconx.log"),
+                maxBytes=10*1024*1024,  # 10MB
+                backupCount=5
+            ),
+            # Error file handler
+            logging.handlers.RotatingFileHandler(
+                os.path.join(log_dir, "errors.log"),
+                maxBytes=10*1024*1024,  # 10MB
+                backupCount=5
+            )
+        ]
+        
+        # Set error level for error file handler specifically
+        handlers[2].setLevel(logging.ERROR)
         
         # Configure root logger
         logging.basicConfig(
             level=logging.INFO,
             format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            handlers=[
-                # Console handler
-                logging.StreamHandler(),
-                # File handler with rotation
-                logging.handlers.RotatingFileHandler(
-                    os.path.join(log_dir, "reconx.log"),
-                    maxBytes=10*1024*1024,  # 10MB
-                    backupCount=5
-                ),
-                # Error file handler
-                logging.handlers.RotatingFileHandler(
-                    os.path.join(log_dir, "errors.log"),
-                    maxBytes=10*1024*1024,  # 10MB
-                    backupCount=5
-                )
-            ]
+            handlers=handlers
         )
-        
-        # Set error level for error file
-        logging.getLogger().handlers[2].setLevel(logging.ERROR)
     
     def log_structured(self, level: str, event: str, data: Dict[str, Any], user_id: Optional[int] = None):
         """Log structured event with metadata."""

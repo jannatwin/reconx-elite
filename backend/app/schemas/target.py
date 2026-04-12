@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.schemas.vulnerability import VulnerabilityOut
+
 
 class TargetCreate(BaseModel):
     domain: str = Field(min_length=3, max_length=255)
@@ -47,22 +49,6 @@ class EndpointOut(BaseModel):
     class Config:
         from_attributes = True
 
-
-class VulnerabilityOut(BaseModel):
-    id: int
-    template_id: str
-    severity: str
-    source: str
-    confidence: float
-    matcher_name: str | None = None
-    matched_url: str | None = None
-    host: str | None = None
-    description: str | None = None
-    notes: str | None = None
-    evidence_json: dict | None = None
-
-    class Config:
-        from_attributes = True
 
 
 class JavaScriptAssetOut(BaseModel):

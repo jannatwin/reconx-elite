@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "alerts.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  - job_name: "backend"
+    static_configs:
+      - targets: ["backend:8000"]
+    metrics_path: /metrics
+
+  - job_name: "worker"
+    static_configs:
+      - targets: ["worker:9540"]
+    metrics_path: /metrics

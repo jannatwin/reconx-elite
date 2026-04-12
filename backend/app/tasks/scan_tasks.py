@@ -54,6 +54,7 @@ from app.services.websocket import (
     notify_critical_vulnerability,
     notify_scan_started
 )
+from app.services.external_notifications import notification_service
 from app.services.blind_xss_service import BlindXssService
 from app.services.payload_generator import PayloadGenerator
 from app.services.payload_tester import OpportunityDetector
@@ -84,6 +85,19 @@ from app.tasks.celery_app import celery_app
 from app.schemas.scan_modules import parse_modules_from_config
 
 logger = logging.getLogger(__name__)
+
+
+def _emit_agent_log_event(message: dict) -> None:
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    try:
+        from app.services.websocket import publish_agent_log_event
+
+        loop.create_task(publish_agent_log_event(message))
+    except Exception:
+        logger.debug("agent log publish unavailable", exc_info=True)
 
 
 def _nuclei_targets_from_scan_endpoints(db: Session, scan_id: int) -> list[str]:
@@ -163,6 +177,18 @@ def _set_stage(scan: Scan, db: Session, stage_name: str) -> None:
         stage_total,
         metadata.get("progress_percent"),
     )
+    _emit_agent_log_event(
+        {
+            "event": "scan_phase_transition",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "scan_id": scan.id,
+            "target_id": scan.target_id,
+            "task": stage_name,
+            "status": "active",
+            "success": True,
+            "message": f"Entered scan phase: {stage_name}",
+        }
+    )
     _update_scan(scan, db, status="running", metadata_json=metadata)
 
 
@@ -171,6 +197,18 @@ def _append_warning(scan: Scan, db: Session, message: str) -> None:
     warnings = list(metadata.get("warnings") or [])
     warnings.append(message)
     metadata["warnings"] = warnings[-20:]
+    _emit_agent_log_event(
+        {
+            "event": "scan_warning",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "scan_id": scan.id,
+            "target_id": scan.target_id,
+            "task": metadata.get("stage"),
+            "status": "warning",
+            "success": False,
+            "message": message,
+        }
+    )
     _update_scan(scan, db, metadata_json=metadata)
 
 
@@ -235,6 +273,18 @@ def _fail_scan(scan: Scan, db: Session, *, stage: str, message: str) -> None:
         scan,
         stage=stage,
         progress_percent=min(int((scan.metadata_json or {}).get("progress_percent", 0)), 99),
+    )
+    _emit_agent_log_event(
+        {
+            "event": "scan_hard_stop",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "scan_id": scan.id,
+            "target_id": scan.target_id,
+            "task": stage,
+            "status": "failed",
+            "success": False,
+            "message": message,
+        }
     )
     _update_scan(scan, db, status="failed", error=message, metadata_json=metadata)
 
@@ -498,6 +548,7 @@ async def _generate_ai_reports(db: Session, scan: Scan, all_vulnerabilities: lis
                 cvss_score=report_data.get("cvss_score", "0.0"),
                 technical_details=report_data.get("technical_details", ""),
                 proof_of_concept=report_data.get("proof_of_concept", ""),
+                exploit_draft=report_data.get("exploit_draft", ""),
                 business_impact=report_data.get("business_impact", ""),
                 bounty_estimate=report_data.get("bounty_estimate", "$0-$0"),
                 remediation_steps=report_data.get("remediation_steps", ""),
@@ -529,17 +580,21 @@ async def _generate_ai_reports(db: Session, scan: Scan, all_vulnerabilities: lis
             reports_generated += 1
             
             # Send notification for critical findings
-            if vuln.get("severity") == "critical":
-                await notify_critical_vulnerability(
-                    scan.target.owner_id,
-                    {
-                        "id": db_vuln.id,
-                        "template_id": vuln.get("template_id"),
-                        "severity": vuln.get("severity"),
-                        "matched_url": vuln.get("matched_url"),
-                        "description": report_data.get("summary", ""),
-                    },
-                )
+            if vuln.get("severity") in ["high", "critical"]:
+                vuln_payload = {
+                    "id": db_vuln.id,
+                    "template_id": vuln.get("template_id"),
+                    "severity": vuln.get("severity"),
+                    "matched_url": vuln.get("matched_url"),
+                    "description": report_data.get("summary", ""),
+                }
+                
+                # Internal websocket notification
+                if vuln.get("severity") == "critical":
+                    await notify_critical_vulnerability(scan.target.owner_id, vuln_payload)
+                
+                # External notifications (Slack/Discord)
+                await notification_service.notify_critical_finding(vuln_payload)
             
         except Exception:
             logger.exception("Error generating AI report")
@@ -1468,14 +1523,21 @@ async def _scan_stage_nuclei_async(payload: dict) -> dict:
             
             # Send notifications for critical vulnerabilities
             for vuln in refreshed_scan.vulnerabilities:
-                if vuln.severity == "critical":
-                    await notify_critical_vulnerability(target.owner_id, {
+                if vuln.severity in ["high", "critical"]:
+                    vuln_payload = {
                         "id": vuln.id,
                         "template_id": vuln.template_id,
                         "severity": vuln.severity,
                         "matched_url": vuln.matched_url,
                         "description": vuln.description
-                    })
+                    }
+                    
+                    # Internal websocket notification
+                    if vuln.severity == "critical":
+                        await notify_critical_vulnerability(target.owner_id, vuln_payload)
+                    
+                    # External notifications (Slack/Discord)
+                    await notification_service.notify_critical_finding(vuln_payload)
             
         return {"scan_id": scan.id, "status": "completed"}
     finally:

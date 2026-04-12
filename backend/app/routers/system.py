@@ -6,12 +6,33 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import Dict, Optional
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_admin
 from app.models.user import User
 from app.services.system_validator import system_validator
 
+from app.services.ai_service import verify_all_models, get_model_status_snapshot
+
 router = APIRouter(prefix="/system", tags=["system-validation"])
+
+
+@router.get("/verify-models")
+@router.post("/verify-models")
+async def verify_ai_models(
+    current_user: User = Depends(require_admin)
+):
+    """Verify all 10 models in the AI roster."""
+    results = await verify_all_models()
+    return results
+
+
+@router.get("/model-status")
+async def get_model_status(
+    current_user: User = Depends(get_current_user)
+):
+    """Get the status of the AI model roster."""
+    return get_model_status_snapshot()
 
 
 @router.get("/health")
@@ -149,19 +170,56 @@ async def test_ai_service(
     """Test AI service functionality (admin only)."""
     
     try:
-        from app.services.ai_service import _check_rate_limit, settings
+        from app.services.ai_service import _check_rate_limit, _is_ai_enabled, analyze_scan_data
+        from app.core.config import settings
         
         # Test rate limiting
         rate_limit_ok = _check_rate_limit()
         
-        # Test AI configuration
-        ai_configured = bool(settings.gemini_api_key)
+        # Comprehensive AI configuration check
+        config = {
+            "legacy_gemini_api_key": bool(settings.gemini_api_key),
+            "openrouter_api_key": bool(settings.openrouter_api_key),
+            "openrouter_api_key_secondary": bool(settings.openrouter_api_key_secondary),
+            "openrouter_api_key_tertiary": bool(settings.openrouter_api_key_tertiary),
+            "tiers": {
+                "scan": {
+                    "provider": settings.ai_scan_provider,
+                    "model": settings.ai_scan_model,
+                    "enabled": _is_ai_enabled(task="scan")
+                },
+                "analyze": {
+                    "provider": settings.ai_analyze_provider,
+                    "model": settings.ai_analyze_model,
+                    "enabled": _is_ai_enabled(task="analyze")
+                },
+                "report": {
+                    "provider": settings.ai_report_provider,
+                    "model": settings.ai_report_model,
+                    "enabled": _is_ai_enabled(task="report")
+                }
+            }
+        }
         
+        # Perform a lightweight test request if scanning is enabled
+        live_test = {}
+        if config["tiers"]["scan"]["enabled"]:
+            try:
+                # Use analyze_scan_data for a real test call
+                test_result = await analyze_scan_data("system_test", "test.example.com", task="scan")
+                live_test = {
+                    "success": "error" not in test_result,
+                    "result_keys": list(test_result.keys()),
+                    "error": test_result.get("error")
+                }
+            except Exception as e:
+                live_test = {"success": False, "error": str(e)}
+
         return {
             "rate_limit_ok": rate_limit_ok,
-            "ai_configured": ai_configured,
-            "api_key_present": bool(settings.gemini_api_key),
-            "test_timestamp": "2025-01-01T00:00:00Z"
+            "config": config,
+            "live_test": live_test,
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
     except Exception as e:

@@ -10,6 +10,7 @@ from urllib.parse import parse_qsl, urljoin, urlparse
 from urllib.request import Request, urlopen
 
 from app.core.config import settings
+from app.services.ai_service import call_model, ORCHESTRATOR_SYSTEM_PROMPT
 
 STATIC_EXTENSIONS = {
     ".css",
@@ -529,3 +530,20 @@ def rank_attack_paths(endpoints: list, vulnerabilities: list) -> list[dict]:
         )
     attack_paths.sort(key=lambda row: (-row["score"], row["title"]))
     return attack_paths[:25]
+
+
+async def route_task_via_orchestrator(task_description: str, context: dict) -> dict:
+    """Route a security task using the Nemotron 3 Nano orchestrator."""
+    prompt = f"TASK: {task_description}\nCONTEXT: {json.dumps(context)}"
+    
+    try:
+        response = await call_model(
+            role="orchestrator", 
+            prompt=prompt, 
+            system_instruction=ORCHESTRATOR_SYSTEM_PROMPT
+        )
+        # Attempt to parse the JSON output from the orchestrator
+        return json.loads(response["output"])
+    except Exception as e:
+        logger.error(f"Orchestrator routing failed: {str(e)}")
+        return {"error": "Routing failed", "fallback_role": "primary_analyst"}

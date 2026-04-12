@@ -7,6 +7,8 @@ import AdminMetricsDashboard from "../components/AdminMetricsDashboard";
 import ConfigurationManager from "../components/ConfigurationManager";
 import SystemHealth from "../components/SystemHealth";
 import UserManagement from "../components/UserManagement";
+import ModelStatusGrid from "../components/ModelStatusGrid";
+import VerificationWorkspace from "../components/VerificationWorkspace";
 
 export default function AdminDashboardPage() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -84,6 +86,8 @@ export default function AdminDashboardPage() {
           ["overview", "Overview"],
           ["metrics", "Metrics Dashboard"],
           ["users", "User Management"],
+          ["verification", "Verification"],
+          ["models", "AI Model Roster"],
           ["health", "System Health"],
           ["config", "Configuration"],
         ].map(([value, label]) => (
@@ -210,6 +214,10 @@ export default function AdminDashboardPage() {
       {activeTab === "metrics" && <AdminMetricsDashboard metrics={metrics} auditLogs={auditLogs} />}
 
       {activeTab === "users" && <UserManagement />}
+
+      {activeTab === "verification" && <VerificationWorkspace />}
+
+      {activeTab === "models" && <ModelStatusGrid />}
 
       {activeTab === "health" && <SystemHealth />}
 

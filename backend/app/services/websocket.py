@@ -1,5 +1,7 @@
 import json
 import logging
+from collections import deque
+import os
 from typing import Dict, List, Set
 from enum import Enum
 
@@ -11,6 +13,8 @@ from app.core.config import settings
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
+_AGENT_LOG_HISTORY: deque[dict] = deque(maxlen=250)
+_PROCESS_ID = str(os.getpid())
 
 
 class NotificationType(str, Enum):
@@ -22,6 +26,7 @@ class NotificationType(str, Enum):
     TARGET_ADDED = "target_added"
     SYSTEM_ALERT = "system_alert"
     USER_NOTIFICATION = "user_notification"
+    AGENT_LOG = "agent_log"
 
 
 class WebSocketManager:
@@ -30,6 +35,7 @@ class WebSocketManager:
     def __init__(self):
         # Store active connections by user_id
         self.active_connections: Dict[int, Set[WebSocket]] = {}
+        self.agent_log_connections: Set[WebSocket] = set()
         # Redis client for cross-process communication
         self.redis_client = None
     
@@ -50,7 +56,11 @@ class WebSocketManager:
         # Send welcome message
         await self.send_personal_message(user_id, {
             "type": NotificationType.USER_NOTIFICATION,
-            "message": "Connected to real-time notifications",
+            "data": {
+                "title": "Connected",
+                "message": "Connected to real-time notifications",
+                "notification_type": "info"
+            },
             "timestamp": self._get_timestamp()
         })
         
@@ -101,6 +111,26 @@ class WebSocketManager:
         for user_id, connections in disconnected_connections.items():
             for connection in connections:
                 self.active_connections[user_id].discard(connection)
+
+    async def connect_agent_log(self, websocket: WebSocket):
+        await websocket.accept()
+        self.agent_log_connections.add(websocket)
+        logger.info("Agent log WebSocket connected")
+
+    def disconnect_agent_log(self, websocket: WebSocket):
+        self.agent_log_connections.discard(websocket)
+        logger.info("Agent log WebSocket disconnected")
+
+    async def broadcast_agent_log(self, message: dict):
+        disconnected: set[WebSocket] = set()
+        for connection in self.agent_log_connections:
+            try:
+                await connection.send_text(json.dumps(message))
+            except Exception as e:
+                logger.error(f"Error broadcasting agent log message: {e}")
+                disconnected.add(connection)
+        for connection in disconnected:
+            self.agent_log_connections.discard(connection)
     
     async def publish_to_redis(self, channel: str, message: dict):
         """Publish message to Redis for cross-process communication."""
@@ -123,10 +153,21 @@ class WebSocketManager:
 manager = WebSocketManager()
 
 
+def record_agent_log_event(message: dict):
+    _AGENT_LOG_HISTORY.append(message)
+
+
+def get_recent_agent_log_events(limit: int = 100) -> list[dict]:
+    if limit <= 0:
+        return []
+    return list(_AGENT_LOG_HISTORY)[-limit:]
+
+
 async def notify_scan_started(user_id: int, target_domain: str, scan_id: int):
     """Send notification when scan starts."""
     message = {
         "type": NotificationType.SCAN_STARTED,
+        "user_id": user_id,
         "data": {
             "target_domain": target_domain,
             "scan_id": scan_id,
@@ -143,6 +184,7 @@ async def notify_scan_completed(user_id: int, target_domain: str, scan_id: int, 
     """Send notification when scan completes successfully."""
     message = {
         "type": NotificationType.SCAN_COMPLETED,
+        "user_id": user_id,
         "data": {
             "target_domain": target_domain,
             "scan_id": scan_id,
@@ -165,6 +207,7 @@ async def notify_scan_failed(user_id: int, target_domain: str, scan_id: int, err
     """Send notification when scan fails."""
     message = {
         "type": NotificationType.SCAN_FAILED,
+        "user_id": user_id,
         "data": {
             "target_domain": target_domain,
             "scan_id": scan_id,
@@ -182,6 +225,7 @@ async def notify_critical_vulnerability(user_id: int, vulnerability: dict):
     """Send notification for critical vulnerability found."""
     message = {
         "type": NotificationType.CRITICAL_VULNERABILITY,
+        "user_id": user_id,
         "data": {
             "vulnerability": {
                 "id": vulnerability.get("id"),
@@ -230,6 +274,17 @@ async def notify_user_notification(user_id: int, title: str, message: str, notif
     await manager.send_personal_message(user_id, notification_message)
 
 
+async def publish_agent_log_event(message: dict):
+    payload = {
+        "type": NotificationType.AGENT_LOG,
+        "data": message | {"origin_process": _PROCESS_ID},
+        "timestamp": manager._get_timestamp(),
+    }
+    record_agent_log_event(payload)
+    await manager.broadcast_agent_log(payload)
+    await manager.publish_to_redis("agent_log", payload)
+
+
 class RedisSubscriber:
     """Redis subscriber for cross-process WebSocket notifications."""
     
@@ -239,59 +294,73 @@ class RedisSubscriber:
     
     async def start(self):
         """Start subscribing to Redis channels."""
-        await manager.init_redis()
-        
-        if not manager.redis_client:
-            logger.error("Redis client not initialized")
-            return
-        
-        self.pubsub = manager.redis_client.pubsub()
-        
-        # Subscribe to notification channels
-        await self.pubsub.subscribe(
-            "reconx:notifications:scan_events",
-            "reconx:notifications:security_alerts", 
-            "reconx:notifications:system_alerts"
-        )
-        
-        logger.info("Redis subscriber started")
-        
-        # Listen for messages
-        async for message in self.pubsub.listen():
-            if message['type'] == 'message':
-                try:
-                    data = json.loads(message['data'])
-                    channel = message['channel']
-                    
-                    # Handle different channel types
-                    if "scan_events" in channel:
-                        await self._handle_scan_event(data)
-                    elif "security_alerts" in channel:
-                        await self._handle_security_alert(data)
-                    elif "system_alerts" in channel:
-                        await self._handle_system_alert(data)
-                        
-                except json.JSONDecodeError as e:
-                    logger.error(f"Error decoding Redis message: {e}")
-                except Exception as e:
-                    logger.error(f"Error handling Redis message: {e}")
+        try:
+            await manager.init_redis()
+
+            if not manager.redis_client:
+                logger.error("Redis client not initialized")
+                return
+
+            self.pubsub = manager.redis_client.pubsub()
+
+            await self.pubsub.subscribe(
+                "reconx:notifications:scan_events",
+                "reconx:notifications:security_alerts",
+                "reconx:notifications:system_alerts",
+                "reconx:notifications:agent_log",
+            )
+
+            logger.info("Redis subscriber started")
+
+            async for message in self.pubsub.listen():
+                if message['type'] == 'message':
+                    try:
+                        data = json.loads(message['data'])
+                        channel = message['channel']
+
+                        if "scan_events" in channel:
+                            await self._handle_scan_event(data)
+                        elif "security_alerts" in channel:
+                            await self._handle_security_alert(data)
+                        elif "system_alerts" in channel:
+                            await self._handle_system_alert(data)
+                        elif "agent_log" in channel:
+                            await self._handle_agent_log(data)
+
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Error decoding Redis message: {e}")
+                    except Exception as e:
+                        logger.error(f"Error handling Redis message: {e}")
+        except Exception as e:
+            logger.warning("Redis subscriber unavailable: %s", e)
     
     async def _handle_scan_event(self, data: dict):
         """Handle scan-related events from other processes."""
-        # For scan events, we need to determine the target user
-        # This would require additional logic to map scan/target to user
-        # For now, we'll broadcast to all admin users or implement user lookup
-        logger.info(f"Received scan event: {data}")
+        user_id = data.get("user_id")
+        if user_id:
+            await manager.send_personal_message(user_id, data)
+        else:
+            logger.warning(f"Received scan event without user_id: {data}")
     
     async def _handle_security_alert(self, data: dict):
         """Handle security alerts from other processes."""
-        # Security alerts might need to be routed to specific users
-        logger.info(f"Received security alert: {data}")
+        user_id = data.get("user_id")
+        if user_id:
+            await manager.send_personal_message(user_id, data)
+        else:
+            logger.warning(f"Received security alert without user_id: {data}")
     
     async def _handle_system_alert(self, data: dict):
         """Handle system alerts from other processes."""
         # System alerts are broadcast to all connected users
         await manager.broadcast_to_all(data)
+
+    async def _handle_agent_log(self, data: dict):
+        """Handle agent log events from other processes."""
+        if (data.get("data") or {}).get("origin_process") == _PROCESS_ID:
+            return
+        record_agent_log_event(data)
+        await manager.broadcast_agent_log(data)
     
     async def stop(self):
         """Stop the subscriber."""

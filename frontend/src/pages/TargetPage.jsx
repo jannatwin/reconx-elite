@@ -11,6 +11,7 @@ import TestSuggestionsPanel from "../components/TestSuggestionsPanel";
 import TargetToolsPanel from "../components/TargetToolsPanel";
 import TicketingIntegration from "../components/TicketingIntegration";
 import VulnerabilityHeatmap from "../components/VulnerabilityHeatmap";
+import AITemplateGenerator from "../components/AITemplateGenerator";
 
 const templateOptions = ["cves", "exposures", "misconfiguration", "fuzzing"];
 const severityOptions = ["low", "medium", "high", "critical"];
@@ -53,6 +54,8 @@ export default function TargetPage() {
   const [selectedSeverities, setSelectedSeverities] = useState(["high", "critical"]);
   const [targetNotes, setTargetNotes] = useState("");
   const [vulnNotes, setVulnNotes] = useState({});
+  const [exploitDrafts, setExploitDrafts] = useState({});
+  const [isGeneratingExploit, setIsGeneratingExploit] = useState({});
   const [scheduleFrequency, setScheduleFrequency] = useState("daily");
   const [scanModules, setScanModules] = useState(() => JSON.parse(JSON.stringify(defaultScanModules)));
   const [scanArtifacts, setScanArtifacts] = useState([]);
@@ -324,14 +327,27 @@ export default function TargetPage() {
     }
   }
 
-  async function saveVulnNotes(vulnerabilityId) {
+  async function saveVulnNotes(vid) {
+    setIsSaving(true);
     try {
-      await api.put(`/vulnerabilities/${vulnerabilityId}`, {
-        notes: vulnNotes[vulnerabilityId] || "",
-      });
-      await loadPage();
+      await api.put(`/vulnerabilities/${vid}`, { notes: vulnNotes[vid] || "" });
+      setError("");
     } catch (requestError) {
-      setError(requestError.response?.data?.detail || "Could not save vulnerability notes");
+      setError(requestError.response?.data?.detail || "Failed to update vulnerability");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function generateExploit(vid) {
+    setIsGeneratingExploit((prev) => ({ ...prev, [vid]: true }));
+    try {
+      const response = await api.post(`/vulnerabilities/${vid}/exploit`);
+      setExploitDrafts((prev) => ({ ...prev, [vid]: response.data.exploit_draft }));
+    } catch (requestError) {
+      setError(requestError.response?.data?.detail || "Failed to generate exploit draft");
+    } finally {
+      setIsGeneratingExploit((prev) => ({ ...prev, [vid]: false }));
     }
   }
 
@@ -786,6 +802,7 @@ export default function TargetPage() {
           ["tools", "Advanced tools"],
           ["ticketing", "Ticketing"],
           ["blind-xss", "Blind XSS"],
+          ["ai-templates", "AI Templates"],
         ].map(([value, label]) => (
           <button
             className={activeTab === value ? "tab-button tab-button-active" : "tab-button"}
@@ -797,6 +814,10 @@ export default function TargetPage() {
           </button>
         ))}
       </nav>
+
+      {activeTab === "ai-templates" ? (
+        <AITemplateGenerator />
+      ) : null}
 
       {activeTab === "overview" ? (
         <OverviewTab
@@ -907,21 +928,40 @@ export default function TargetPage() {
                     </td>
                     <td>{item.matched_url || item.host || "-"}</td>
                     <td>
-                      <textarea
-                        className="notes-area compact"
-                        rows={3}
-                        value={vulnNotes[item.id] || ""}
-                        onChange={(event) =>
-                          setVulnNotes({ ...vulnNotes, [item.id]: event.target.value })
-                        }
-                      />
-                      <button
-                        className="ghost-button"
-                        onClick={() => saveVulnNotes(item.id)}
-                        type="button"
-                      >
-                        Save
-                      </button>
+                      <div className="space-y-2">
+                        <textarea
+                          className="notes-area compact"
+                          rows={3}
+                          value={vulnNotes[item.id] || ""}
+                          onChange={(event) =>
+                            setVulnNotes({ ...vulnNotes, [item.id]: event.target.value })
+                          }
+                        />
+                        <div className="flex space-x-2">
+                          <button
+                            className="ghost-button"
+                            onClick={() => saveVulnNotes(item.id)}
+                            type="button"
+                          >
+                            Save
+                          </button>
+                          {!item.ai_report?.[0]?.exploit_draft && (
+                            <button
+                              className="ghost-button text-blue-400"
+                              onClick={() => generateExploit(item.id)}
+                              disabled={isGeneratingExploit[item.id]}
+                              type="button"
+                            >
+                              {isGeneratingExploit[item.id] ? "Generating..." : "✨ AI Exploit"}
+                            </button>
+                          )}
+                        </div>
+                        {(exploitDrafts[item.id] || item.ai_report?.[0]?.exploit_draft) && (
+                          <div className="mt-2 p-3 bg-gray-900 rounded border border-gray-700 text-xs font-mono overflow-auto max-h-48 whitespace-pre-wrap text-green-400">
+                            {exploitDrafts[item.id] || item.ai_report?.[0]?.exploit_draft}
+                          </div>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

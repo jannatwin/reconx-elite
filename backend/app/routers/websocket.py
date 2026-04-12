@@ -14,10 +14,18 @@ from app.services.audit import log_audit_event
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(prefix="/ws", tags=["websocket"])
 
 
-@router.websocket("/ws/{user_id}")
+def _extract_websocket_token(websocket: WebSocket) -> str | None:
+    token = websocket.query_params.get("token")
+    auth_header = websocket.headers.get("authorization", "")
+    if not token and auth_header.lower().startswith("bearer "):
+        token = auth_header[7:].strip()
+    return token
+
+
+@router.websocket("/{user_id}")
 async def websocket_endpoint(
     websocket: WebSocket,
     user_id: int,
@@ -28,10 +36,7 @@ async def websocket_endpoint(
     Clients connect to ws://localhost:8000/ws/{user_id}
     """
     # Validate JWT and bind socket identity to token subject.
-    token = websocket.query_params.get("token")
-    auth_header = websocket.headers.get("authorization", "")
-    if not token and auth_header.lower().startswith("bearer "):
-        token = auth_header[7:].strip()
+    token = _extract_websocket_token(websocket)
     if not token:
         await websocket.close(code=4401, reason="Missing authentication token")
         return
@@ -125,6 +130,62 @@ async def websocket_endpoint(
         db.commit()
 
 
+@router.websocket("/agent-log")
+async def agent_log_websocket(
+    websocket: WebSocket,
+    db: Session = Depends(get_db),
+):
+    """Admin-only WebSocket endpoint for live agent log events."""
+    token = _extract_websocket_token(websocket)
+    if not token:
+        await websocket.close(code=4401, reason="Missing authentication token")
+        return
+    try:
+        claims = decode_token(token)
+        if claims.get("token_type") != "access":
+            await websocket.close(code=4403, reason="Forbidden")
+            return
+        user_id = int(claims.get("sub"))
+    except (ValueError, TypeError):
+        await websocket.close(code=4401, reason="Invalid token")
+        return
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or user.role != "admin":
+        await websocket.close(code=4403, reason="Admin role required")
+        return
+
+    await manager.connect_agent_log(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            try:
+                message = json.loads(data)
+            except json.JSONDecodeError:
+                await websocket.send_text(json.dumps({"type": "error", "message": "Invalid JSON format"}))
+                continue
+
+            if message.get("type") == "ping":
+                await websocket.send_text(
+                    json.dumps({"type": "pong", "timestamp": manager._get_timestamp()})
+                )
+            else:
+                await websocket.send_text(
+                    json.dumps(
+                        {
+                            "type": "subscription_acknowledged",
+                            "data": {"channels": ["agent_log"], "message": "Subscribed to agent log"},
+                            "timestamp": manager._get_timestamp(),
+                        }
+                    )
+                )
+    except WebSocketDisconnect:
+        manager.disconnect_agent_log(websocket)
+    except Exception as e:
+        logger.error(f"Agent log WebSocket error: {e}")
+        manager.disconnect_agent_log(websocket)
+
+
 async def handle_subscription(websocket: WebSocket, user_id: int, channels: list):
     """
     Handle client subscription to specific notification channels.
@@ -138,8 +199,10 @@ async def handle_subscription(websocket: WebSocket, user_id: int, channels: list
     
     await websocket.send_text(json.dumps({
         "type": "subscription_acknowledged",
-        "channels": subscribed_channels,
-        "message": f"Subscribed to {', '.join(subscribed_channels)}",
+        "data": {
+            "channels": subscribed_channels,
+            "message": f"Subscribed to {', '.join(subscribed_channels)}"
+        },
         "timestamp": manager._get_timestamp()
     }))
     

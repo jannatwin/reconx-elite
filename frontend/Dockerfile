@@ -15,9 +15,22 @@ RUN npm run build -w reconx-elite-frontend
 
 FROM nginx:1.27-alpine
 
+RUN addgroup -S appuser && adduser -S appuser -G appuser
+
+# Fix Nginx permissions for non-root user
+RUN touch /var/run/nginx.pid && \
+    chown -R appuser:appuser /var/run/nginx.pid /var/cache/nginx /var/log/nginx /etc/nginx/conf.d
+
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/frontend/dist /usr/share/nginx/html
 
-EXPOSE 80
+RUN chown -R appuser:appuser /usr/share/nginx/html
+
+USER appuser
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+    CMD wget -qO- http://localhost:8080/ || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]

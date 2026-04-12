@@ -270,6 +270,16 @@ def get_configuration(admin: User = Depends(require_admin)):
         js_fetch_max_assets=settings.js_fetch_max_assets,
         access_token_expire_minutes=settings.access_token_expire_minutes,
         refresh_token_expire_minutes=settings.refresh_token_expire_minutes,
+        # AI Config
+        ai_scan_provider=settings.ai_scan_provider,
+        ai_scan_model=settings.ai_scan_model,
+        ai_analyze_provider=settings.ai_analyze_provider,
+        ai_analyze_model=settings.ai_analyze_model,
+        ai_report_provider=settings.ai_report_provider,
+        ai_report_model=settings.ai_report_model,
+        # Notification Config
+        slack_webhook_url=settings.slack_webhook_url,
+        discord_webhook_url=settings.discord_webhook_url,
     )
 
 
@@ -286,29 +296,28 @@ def update_configuration(
     """
     changes = {}
 
-    if payload.cors_allowed_origins:
-        changes["cors_allowed_origins"] = settings.cors_allowed_origins
-        settings.cors_allowed_origins = payload.cors_allowed_origins
+    # Standard fields
+    for field in ["cors_allowed_origins", "scan_throttle_seconds", "nuclei_templates", 
+                  "takeover_cname_indicators", "scan_nuclei_target_cap", "scan_header_probe_cap"]:
+        val = getattr(payload, field)
+        if val is not None:
+            changes[field] = getattr(settings, field)
+            setattr(settings, field, val)
+            
+    # AI Config fields
+    for field in ["ai_scan_provider", "ai_scan_model", "ai_analyze_provider", 
+                  "ai_analyze_model", "ai_report_provider", "ai_report_model"]:
+        val = getattr(payload, field)
+        if val is not None:
+            changes[field] = getattr(settings, field)
+            setattr(settings, field, val)
 
-    if payload.scan_throttle_seconds:
-        changes["scan_throttle_seconds"] = settings.scan_throttle_seconds
-        settings.scan_throttle_seconds = payload.scan_throttle_seconds
-
-    if payload.nuclei_templates:
-        changes["nuclei_templates"] = settings.nuclei_templates
-        settings.nuclei_templates = payload.nuclei_templates
-
-    if payload.takeover_cname_indicators:
-        changes["takeover_cname_indicators"] = settings.takeover_cname_indicators
-        settings.takeover_cname_indicators = payload.takeover_cname_indicators
-
-    if payload.scan_nuclei_target_cap:
-        changes["scan_nuclei_target_cap"] = settings.scan_nuclei_target_cap
-        settings.scan_nuclei_target_cap = payload.scan_nuclei_target_cap
-
-    if payload.scan_header_probe_cap:
-        changes["scan_header_probe_cap"] = settings.scan_header_probe_cap
-        settings.scan_header_probe_cap = payload.scan_header_probe_cap
+    # Notification Config fields
+    for field in ["slack_webhook_url", "discord_webhook_url"]:
+        val = getattr(payload, field)
+        if val is not None:
+            changes[field] = getattr(settings, field)
+            setattr(settings, field, val)
 
     log_audit_event(
         db,
@@ -318,16 +327,4 @@ def update_configuration(
         metadata_json={"changes": changes},
     )
 
-    return ConfigurationResponse(
-        app_name=settings.app_name,
-        cors_allowed_origins=settings.cors_allowed_origins,
-        scan_throttle_seconds=settings.scan_throttle_seconds,
-        nuclei_templates=settings.nuclei_templates,
-        takeover_cname_indicators=settings.takeover_cname_indicators,
-        scan_nuclei_target_cap=settings.scan_nuclei_target_cap,
-        scan_header_probe_cap=settings.scan_header_probe_cap,
-        js_fetch_timeout_seconds=settings.js_fetch_timeout_seconds,
-        js_fetch_max_assets=settings.js_fetch_max_assets,
-        access_token_expire_minutes=settings.access_token_expire_minutes,
-        refresh_token_expire_minutes=settings.refresh_token_expire_minutes,
-    )
+    return get_configuration(admin)

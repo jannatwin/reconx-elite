@@ -1,17 +1,19 @@
 # ReconX Elite - Advanced Bug Bounty Platform
 
-ReconX Elite is a **professional-grade bug bounty reconnaissance platform** with advanced AI-powered vulnerability analysis, exploit validation, and intelligence learning capabilities. Built around FastAPI, Celery, Redis, PostgreSQL, and React, it provides a complete solution for security researchers and bug bounty hunters.
+ReconX Elite is a **professional-grade, multi-model AI-powered bug bounty reconnaissance platform** built around a wildcard domain assessment workflow. It provides a complete solution for security researchers, covering everything from initial reconnaissance to automated vulnerability analysis and professional report generation.
 
-## 🚀 NEW: Advanced Bug Bounty Assistant
+The platform combines a full reconnaissance pipeline, automated vulnerability testing workflow, and a task-routed multi-model AI layer. Every phase is coordinated by an orchestrator agent that routes work to the best-fit model based on capability, reasoning depth, context window, and speed.
 
-ReconX Elite has been transformed into a **complete bug bounty assistant** with cutting-edge capabilities:
+## 🚀 Advanced Bug Bounty Assistant
+
+ReconX Elite is a **complete bug bounty assistant** with cutting-edge capabilities:
 
 ### 🎯 **Core Advanced Features**
 
 - **🔍 Exploit Validation Engine** - Request replay and confirmation logic
-- **🌐 Out-of-Band Interaction Tracking** - SSRF and blind XSS detection
+- **🌐 Out-of-Band Interaction Tracking** - SSRF and blind XSS detection via interactsh
 - **🧪 Manual Testing Suite** - Payload injection and request replay
-- **🧠 Intelligence Learning System** - Learn from previous findings
+- **🧠 Intelligence Learning System** - Pattern extraction and effectiveness tracking
 - **📝 Custom Nuclei Template Engine** - Database-stored user templates
 - **🛡️ AI Security Hardening** - Input sanitization and data masking
 - **📄 Elite Report Generation** - CVSS/CWE/OWASP mapping
@@ -20,12 +22,64 @@ ReconX Elite has been transformed into a **complete bug bounty assistant** with 
 
 ### 🔐 **Security-First Architecture**
 
-- **Production-grade AI service** with comprehensive security controls
+- **Multi-model AI layer** with task-specific model assignments
 - **Input sanitization** against prompt injection attacks
 - **Data masking** for sensitive information protection
 - **Rate limiting** and safety controls for all AI features
-- **Privacy controls** - enable/disable AI processing per target
 - **Structured JSON output** enforcement and validation
+
+## 🧠 Multi-Model AI Orchestration
+
+ReconX Elite uses a sophisticated multi-model architecture where each task is routed to the most capable model based on context length, reasoning requirements, and speed.
+
+| Model | Assigned Role |
+| :--- | :--- |
+| **Nemotron 3 Nano** | Orchestrator routing agent |
+| **Llama 3.3 70B** | Primary analysis, IDOR test generation, severity rating |
+| **Nemotron 3 Super** | Deep chain reasoning, JWT attack analysis, SSRF escalation |
+| **Qwen3 Coder 480B** | Code generation, payload creation, JS analysis |
+| **GLM 4.5 Air** | Fast subdomain and host triage classification |
+| **Gemma 4 26B A4B** | Structured JSON extraction from raw tool output |
+| **Gemma 4 31B** | Misconfiguration and HTTP header analysis |
+| **MiniMax M2.5** | Long-context JavaScript file analysis (Large context window) |
+| **gpt-oss-120b** | High/Critical severity reports and executive summaries |
+| **gpt-oss-20b** | Low/Medium severity report drafting |
+
+### Orchestration Workflow
+
+The orchestration layer follows a ten-phase decision workflow that covers the full bug bounty lifecycle from initialization through continuous monitoring. The Nemotron 3 Nano orchestrator applies escalation logic, hard-stop conditions, and model handoff rules so each task is sent to the most appropriate model at the right phase of the pipeline.
+
+## 🕵️ Reconnaissance Pipeline
+
+The recon pipeline covers a comprehensive suite of tools and techniques:
+
+1. **Subdomain Enumeration**: `subfinder`, `sublist3r`, `findomain`, `crt.sh`, `massdns`, and `gobuster`. Results are deduplicated into `all_subs.txt`.
+2. **Live Host Detection**: `httpx` and `httprobe`.
+3. **Port Scanning**: `nmap` and `masscan`.
+4. **Visual Recon**: `gowitness` for automated screenshots.
+5. **URL Collection**: `gau`, `waybackurls`, `katana`, and `hakrawler`.
+6. **Parameter Extraction**: All URLs with parameters are extracted into `params.txt`.
+7. **JS Analysis**: Automated downloading and secret detection using `SecretFinder`, `LinkFinder`, `trufflehog`, and custom grep patterns.
+
+## 🛡️ Vulnerability Testing Pipeline
+
+The automated testing pipeline includes:
+
+- **Subdomain Takeover**: `subjack` and `nuclei`.
+- **Injection Attacks**: XSS (`kxss`, `dalfox`), SQL Injection (`sqlmap`, `ghauri`), and SSRF (`interactsh`).
+- **Configuration Audits**: CORS misconfigurations, cloud bucket exposures (`aws-cli`, `cloud_enum`).
+- **Information Leakage**: Sensitive file exposure and security header analysis.
+- **Nuclei Scanning**: Full template scanning with custom and community templates.
+
+## 🖥️ Dashboard Experience
+
+The frontend dashboard is a dark-themed interface built to make long-running recon and testing workflows easy to monitor. It includes:
+
+- **Pipeline Progress Tracking**: A visual progress bar for the end-to-end workflow.
+- **Live Agent Log**: Streaming activity updates from the active orchestration and scanning stages.
+- **Findings Management**: Severity-badged finding cards and summary views.
+- **Model Activity Grid**: Real-time visibility into which AI model is currently active and what role it is performing.
+- **Severity Stats**: Statistical cards for Low, Medium, High, and Critical findings.
 
 ## Architecture
 
@@ -41,7 +95,7 @@ frontend (React/Vite, nginx in Docker)  :5173
               ├─> Manual Testing Service
               ├─> Intelligence Learning Service
               ├─> Custom Template Engine
-              └─> AI Service (Gemini Integration)
+              └─> AI Orchestrator (Multi-Model Integration)
 ```
 
 ## 🎯 Advanced Capabilities

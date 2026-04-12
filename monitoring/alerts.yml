@@ -1,0 +1,38 @@
+groups:
+  - name: reconx_alerts
+    rules:
+      - alert: BackendHighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High 5xx error rate on backend"
+          description: "Backend 5xx error rate is above 5% for the last 5 minutes."
+
+      - alert: WorkerHighFailureRate
+        expr: rate(celery_tasks_total{state="failure"}[5m]) > 0.167
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Celery task failure rate"
+          description: "Worker task failure rate exceeds 10/min for the last 5 minutes."
+
+      - alert: DBPoolHighUtilization
+        expr: db_pool_connections / 50 > 0.8
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection pool utilization high"
+          description: "DB pool is above 80% utilized (pool_size=20 + max_overflow=30 = 50 total)."
+
+      - alert: ContainerUnhealthy
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Container is unhealthy or unreachable"
+          description: "Prometheus target {{ $labels.job }} ({{ $labels.instance }}) has been down for more than 1 minute."

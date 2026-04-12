@@ -123,35 +123,21 @@ class SystemValidator:
         """Validate AI service configuration and availability."""
         
         try:
-            # Check API key
-            if not settings.gemini_api_key:
+            from app.services.ai_service import _is_ai_enabled, get_model_status_snapshot, MODEL_MAP
+
+            if not _is_ai_enabled("scan") and not _is_ai_enabled("report"):
                 return {
                     "status": "warning",
-                    "message": "Gemini API key not configured - AI features disabled",
+                    "message": "AI providers are not configured - AI features disabled",
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
-            
-            # Test AI service import and basic functionality
-            from app.services.ai_service import _get_model
-            
-            try:
-                model = _get_model()
-                if model is None:
-                    return {
-                        "status": "error",
-                        "message": "Failed to initialize AI model",
-                        "timestamp": datetime.now(timezone.utc).isoformat()
-                    }
-            except Exception as e:
-                return {
-                    "status": "error",
-                    "message": f"AI model initialization failed: {str(e)}",
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-            
+
+            snapshot = get_model_status_snapshot()
             return {
                 "status": "healthy",
-                "message": "AI service configured and available",
+                "message": "AI service configured and roster loaded",
+                "provider": snapshot["provider"],
+                "model_count": len(MODEL_MAP),
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
             
@@ -265,7 +251,11 @@ class SystemValidator:
                 security_issues.append("Localhost CORS origins detected (OK for development)")
             
             # Check rate limits
-            if settings.scan_rate_limit > 100:
+            try:
+                scan_limit_value = int(str(settings.scan_rate_limit).split("/", 1)[0])
+            except (TypeError, ValueError):
+                scan_limit_value = 0
+            if scan_limit_value > 100:
                 security_issues.append("High scan rate limit detected")
             
             if security_issues:

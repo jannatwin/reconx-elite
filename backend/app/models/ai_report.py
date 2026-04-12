@@ -24,6 +24,7 @@ class AIReport(Base):
     cvss_score = Column(Text, nullable=True)  # CVSS estimation
     technical_details = Column(Text, nullable=True)  # Request/response details
     proof_of_concept = Column(Text, nullable=True)  # Reproducible commands
+    exploit_draft = Column(Text, nullable=True)  # AI-generated exploit draft/PoC
     
     # Impact and remediation
     business_impact = Column(Text, nullable=True)

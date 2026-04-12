@@ -1,11 +1,19 @@
+import logging
+from pathlib import Path
 from functools import cached_property
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_ENV_FILES = (str(REPO_ROOT / ".env"), ".env")
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=DEFAULT_ENV_FILES,
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     app_name: str = "ReconX Elite API"
 
@@ -31,8 +39,10 @@ class Settings(BaseSettings):
     register_rate_limit: str = "10/minute"
     login_rate_limit: str = "20/minute"
     refresh_rate_limit: str = "30/minute"
-    read_rate_limit: str = "120/minute"
-    write_rate_limit: str = "60/minute"
+    read_rate_limit: str = "60/minute"
+    write_rate_limit: str = "20/minute"
+    ai_rate_limit: str = "10/minute"
+    auth_rate_limit: str = "10/minute"
     scan_rate_limit: str = "12/minute"
     report_rate_limit: str = "30/minute"
     ticketing_rate_limit: str = "20/minute"
@@ -61,6 +71,28 @@ class Settings(BaseSettings):
     )
 
     gemini_api_key: str = ""
+    openrouter_key: str = ""
+    openrouter_api_key_secondary: str = ""
+    openrouter_api_key_tertiary: str = ""
+    ai_provider: str = "gemini"  # legacy setting, use ai_scan_provider instead
+    ai_model: str = "gemini-1.5-flash"  # legacy setting, use ai_scan_model instead
+
+    # Task-specific AI settings
+    ai_scan_provider: str = "gemini"  # Low-cost, high-speed (Gemini Flash)
+    ai_scan_model: str = "gemini-1.5-flash"
+    
+    ai_analyze_provider: str = "gemini"  # Balanced reasoning (GPT-4o mini, Llama 3.1 70B)
+    ai_analyze_model: str = "gemini-1.5-flash" # Default to flash if not set
+    
+    ai_report_provider: str = "gemini"  # High reasoning, expert writing (GPT-4o, Gemini Pro, Claude 3.5 Sonnet)
+    ai_report_model: str = "gemini-1.5-pro"
+    
+    # Notification webhooks
+    slack_webhook_url: str = ""
+    discord_webhook_url: str = ""
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+    
     # Gemini API resilience and AI input sizing
     gemini_max_retries: int = 3
     gemini_retry_base_seconds: float = 15.0
@@ -111,6 +143,25 @@ class Settings(BaseSettings):
     # Nuclei OOB (optional self-hosted interactsh)
     interactsh_server_url: str = ""
 
+    # Database connection pool tuning
+    db_pool_size: int = 20
+    db_max_overflow: int = 30
+    db_pool_recycle: int = 3600
+    db_pool_timeout: int = 30
+
+    # HTTPS / proxy
+    https_behind_proxy: bool = False
+
+    # Redis cache
+    redis_cache_ttl: int = 60
+
+    # Backup
+    backup_dest_path: str = "/backups"
+    backup_retention_days: int = 7
+
+    # Metrics
+    metrics_enabled: bool = True
+
     @cached_property
     def cors_allowed_origins_list(self) -> list[str]:
         return [value.strip() for value in self.cors_allowed_origins.split(",") if value.strip()]
@@ -123,5 +174,28 @@ class Settings(BaseSettings):
     def takeover_indicators(self) -> tuple[str, ...]:
         return tuple(value.strip().lower() for value in self.takeover_cname_indicators.split(",") if value.strip())
 
+    @property
+    def openrouter_api_key(self) -> str:
+        return self.openrouter_key
+
+    @property
+    def backend_callback_url(self) -> str:
+        return self.callback_url
+
+    @property
+    def runtime_validation_errors(self) -> tuple[str, ...]:
+        errors: list[str] = []
+        if self.jwt_secret_key == "change-me-in-production":
+            errors.append("JWT_SECRET_KEY must be changed from the default value")
+        return tuple(errors)
+
+    def validate_runtime_or_raise(self) -> None:
+        if self.runtime_validation_errors:
+            raise RuntimeError("; ".join(self.runtime_validation_errors))
+
 
 settings = Settings()
+
+_logger = logging.getLogger(__name__)
+for message in settings.runtime_validation_errors:
+    _logger.warning("Runtime configuration warning: %s", message)

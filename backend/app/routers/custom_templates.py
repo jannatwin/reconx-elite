@@ -9,8 +9,56 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.user import User
 from app.services.custom_template_engine import template_engine
+from app.services.ai_template_generator import template_generator
 
 router = APIRouter(prefix="/templates", tags=["custom-templates"])
+
+
+class TemplateGenerateDescription(BaseModel):
+    """Model for generating a template from description."""
+    description: str = Field(..., description="Vulnerability description or requirements")
+
+
+class TemplateGenerateHTTP(BaseModel):
+    """Model for generating a template from HTTP traffic."""
+    request: str = Field(..., description="Raw HTTP request")
+    response: Optional[str] = Field(None, description="Raw HTTP response")
+
+
+@router.post("/generate/description")
+async def generate_template_from_description(
+    request: TemplateGenerateDescription,
+    current_user: User = Depends(get_current_user)
+):
+    """Generate a Nuclei template from a description using AI."""
+    
+    template_yaml = await template_generator.generate_from_description(request.description)
+    
+    if not template_yaml:
+        raise HTTPException(status_code=500, detail="Failed to generate template")
+    
+    return {
+        "template_yaml": template_yaml,
+        "source": "ai_description"
+    }
+
+
+@router.post("/generate/http")
+async def generate_template_from_http(
+    request: TemplateGenerateHTTP,
+    current_user: User = Depends(get_current_user)
+):
+    """Generate a Nuclei template from HTTP traffic using AI."""
+    
+    template_yaml = await template_generator.generate_from_http(request.request, request.response)
+    
+    if not template_yaml:
+        raise HTTPException(status_code=500, detail="Failed to generate template")
+    
+    return {
+        "template_yaml": template_yaml,
+        "source": "ai_http"
+    }
 
 
 class TemplateCreate(BaseModel):

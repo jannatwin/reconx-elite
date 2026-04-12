@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.cache import build_cache_key, get_cached, invalidate, set_cached
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
@@ -17,7 +18,7 @@ router = APIRouter(prefix="/targets", tags=["targets"])
 
 @router.post("", response_model=TargetOut)
 @limiter.limit(settings.write_rate_limit)
-def create_target(
+async def create_target(
     request: Request,
     payload: TargetCreate,
     db: Session = Depends(get_db),
@@ -43,16 +44,22 @@ def create_target(
         ip_address=request.client.host if request.client else None,
         metadata_json={"target_id": target.id, "domain": target.domain},
     )
+    await invalidate(build_cache_key(user.id, "targets"))
     return target
 
 
 @router.get("", response_model=list[TargetListItemOut])
 @limiter.limit(settings.read_rate_limit)
-def list_targets(
+async def list_targets(
     request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    cache_key = build_cache_key(user.id, "targets")
+    cached = await get_cached(cache_key)
+    if cached is not None:
+        return [TargetListItemOut.model_validate(item) for item in cached]
+
     targets = (
         db.query(Target)
         .options(
@@ -94,12 +101,13 @@ def list_targets(
                 ),
             )
         )
+    await set_cached(cache_key, [item.model_dump(mode="json") for item in payload])
     return payload
 
 
 @router.put("/{target_id}", response_model=TargetOut)
 @limiter.limit(settings.write_rate_limit)
-def update_target(
+async def update_target(
     target_id: int,
     payload: TargetUpdate,
     request: Request,
@@ -121,6 +129,7 @@ def update_target(
         ip_address=request.client.host if request.client else None,
         metadata_json={"target_id": target.id},
     )
+    await invalidate(build_cache_key(user.id, "targets"))
     return target
 
 
