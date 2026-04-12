@@ -70,11 +70,11 @@ export default function DashboardPage() {
         </div>
         <div style={{ display: "flex", gap: "1rem" }}>
           {isAdmin && (
-            <Link to="/admin" className="ghost-button">
+            <Link to="/admin" className="primary-button">
               Admin Panel
             </Link>
           )}
-          <button className="ghost-button" onClick={logout} type="button">
+          <button className="primary-button" onClick={logout} type="button">
             Logout
           </button>
         </div>
@@ -118,7 +118,7 @@ export default function DashboardPage() {
               required
             />
           </label>
-          <button className="primary-button" disabled={isSubmitting} type="submit">
+          <button className="primary-button button-full" disabled={isSubmitting} type="submit">
             {isSubmitting ? "Adding..." : "Add target"}
           </button>
           <p className="legal-note">

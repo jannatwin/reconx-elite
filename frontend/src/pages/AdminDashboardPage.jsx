@@ -58,10 +58,10 @@ export default function AdminDashboardPage() {
           </p>
         </div>
         <div style={{ display: "flex", gap: "1rem" }}>
-          <Link to="/" className="ghost-button">
+          <Link to="/" className="primary-button">
             Back to Dashboard
           </Link>
-          <button className="ghost-button" onClick={logout} type="button">
+          <button className="primary-button" onClick={logout} type="button">
             Logout
           </button>
         </div>
@@ -75,6 +75,8 @@ export default function AdminDashboardPage() {
             marginBottom: "2rem",
             background: "#fee",
             borderLeft: "4px solid #f00",
+            color: "#661b1c",
+            fontWeight: "600"
           }}
         >
           {error}
