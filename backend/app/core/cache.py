@@ -49,3 +49,13 @@ async def invalidate(key: str) -> None:
         await get_redis().delete(key)
     except RedisError as e:
         logger.warning("Redis delete failed for key %s: %s", key, e)
+
+
+async def invalidate_prefix(prefix: str) -> None:
+    try:
+        redis = get_redis()
+        keys = [key async for key in redis.scan_iter(match=f"{prefix}*")]
+        if keys:
+            await redis.delete(*keys)
+    except RedisError as e:
+        logger.warning("Redis delete failed for prefix %s: %s", prefix, e)

@@ -20,6 +20,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   redis:
     image: redis:7-alpine
@@ -31,6 +36,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   migrate:
     build:
@@ -48,6 +58,11 @@ services:
     user: "1001:1001"
     cap_drop:
       - ALL
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   backend:
     build:
@@ -92,6 +107,11 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   worker:
     build:
@@ -118,6 +138,11 @@ services:
         reservations:
           cpus: "1"
           memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   frontend:
     build:
@@ -141,13 +166,18 @@ services:
         reservations:
           cpus: "0.25"
           memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   db-backup:
     image: postgres:16-alpine
     env_file:
       - ./.env
     environment:
-      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-reconx}
       BACKUP_DEST_PATH: ${BACKUP_DEST_PATH:-/backups}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
     volumes:
@@ -169,6 +199,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 5m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   reverse-proxy:
     image: nginx:1.27-alpine
@@ -184,6 +219,11 @@ services:
       - backend
       - frontend
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   postgres_data:

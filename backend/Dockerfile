@@ -43,7 +43,9 @@ WORKDIR /tmp
 
 COPY requirements.txt .
 
-RUN pip install --user --no-cache-dir --default-timeout=180 --retries=10 -r requirements.txt
+# Install dependencies with pip-audit for security vulnerability scanning
+RUN pip install --user --no-cache-dir --default-timeout=180 --retries=10 -r requirements.txt && \
+    pip install --user --no-cache-dir pip-audit
 
 # Final runtime image
 FROM python:3.12-slim

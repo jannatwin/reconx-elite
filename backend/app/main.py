@@ -5,11 +5,13 @@ configure_logging()
 import asyncio
 import time
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import HTMLResponse
+from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from slowapi import _rate_limit_exceeded_handler
@@ -18,7 +20,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from app import models  # noqa: F401
 from app.core.config import settings
-from app.core.database import db_timeout_handler, SATimeoutError, init_engine
+from app.core.database import db_timeout_handler, SATimeoutError, init_engine, get_db
 from app.core.exception_handlers import http_exception_handler, unhandled_exception_handler
 from app.core.metrics import http_requests_total, http_request_duration_seconds
 from app.core.middleware import AuthGuardMiddleware, RequestLoggingMiddleware
@@ -73,15 +75,32 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 allowed_origins = settings.cors_allowed_origins_list or ["http://localhost:5173"]
 if "*" in allowed_origins:
     raise RuntimeError("CORS wildcard origin is not allowed when credentials are enabled")
+
+
+def _trusted_hosts_from_origins(origins: list[str]) -> list[str]:
+    hosts: list[str] = []
+    for origin in origins:
+        candidate = origin.strip()
+        if not candidate:
+            continue
+        parsed = urlparse(candidate if "://" in candidate else f"//{candidate}")
+        host = parsed.hostname or candidate
+        if host:
+            hosts.append(host)
+    return list(dict.fromkeys(hosts))
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept"],
+    max_age=3600,
 )
 if settings.https_behind_proxy:
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
+    trusted_hosts = _trusted_hosts_from_origins(allowed_origins) or ["localhost", "127.0.0.1"]
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=trusted_hosts)
     from fastapi.middleware import HTTPSRedirectMiddleware
     app.add_middleware(HTTPSRedirectMiddleware)
 app.add_middleware(SlowAPIMiddleware)
@@ -159,5 +178,17 @@ def root() -> HTMLResponse:
 
 
 @app.get("/health")
-def health():
-    return {"status": "ok"}
+async def health():
+    database_status = "disconnected"
+    try:
+        from app.core.database import get_sessionmaker
+        sessionmaker = get_sessionmaker()
+        db_session = sessionmaker()
+        try:
+            db_session.execute(text("SELECT 1"))
+            database_status = "connected"
+        finally:
+            db_session.close()
+    except Exception:
+        database_status = "disconnected"
+    return {"status": "ok", "database": database_status}

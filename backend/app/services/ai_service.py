@@ -46,7 +46,7 @@ TASK_ROLE_MAP = {
 }
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-_RATE_LIMIT_EVENTS: deque[float] = deque()
+_RATE_LIMIT_EVENTS: deque[float] = deque(maxlen=100000)  # FIX #3: Bounded deque to prevent memory leak
 _MODEL_STATUS_CACHE: dict[str, Any] = {"updated_at": None, "results": {}}
 
 ORCHESTRATOR_SYSTEM_PROMPT = """

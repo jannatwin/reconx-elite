@@ -16,6 +16,8 @@ class ScanRequest(BaseModel):
         value = value.strip().lower()
         value = re.sub(r'^https?://', '', value)
         value = re.sub(r'^www\.', '', value)
+        if len(value) > 253:
+            raise ValueError('Domain name too long (max 253 characters per RFC 1035)')
         if not DOMAIN_PATTERN.fullmatch(value):
             raise ValueError('Invalid domain format')
         return value

@@ -1,3 +1,4 @@
+import threading
 from sqlalchemy import create_engine
 from sqlalchemy.exc import TimeoutError as SATimeoutError
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -9,29 +10,31 @@ from app.core.config import settings
 # Engine and session maker - initialized at application startup
 _engine = None
 _SessionLocal = None
+_engine_lock = threading.Lock()
 
 def init_engine():
     """Initialize the database engine and session maker at application startup."""
     global _engine, _SessionLocal
-    if _engine is None:
-        _engine = create_engine(
-            settings.database_url,
-            pool_pre_ping=True,
-            pool_size=settings.db_pool_size,
-            max_overflow=settings.db_max_overflow,
-            pool_recycle=settings.db_pool_recycle,
-            pool_timeout=settings.db_pool_timeout,
-            echo=False,
-            connect_args={
-                "connect_timeout": 10,
-            }
-        )
-        _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
+    with _engine_lock:
+        if _engine is None:
+            _engine = create_engine(
+                settings.database_url,
+                pool_pre_ping=True,
+                pool_size=settings.db_pool_size,
+                max_overflow=settings.db_max_overflow,
+                pool_recycle=settings.db_pool_recycle,
+                pool_timeout=settings.db_pool_timeout,
+                echo=False,
+                connect_args={
+                    "connect_timeout": 10,
+                }
+            )
+            _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
 
 def get_engine():
     """Get the initialized database engine."""
     if _engine is None:
-        raise RuntimeError("Database engine not initialized. Call init_engine() at startup.")
+        init_engine()
     return _engine
 
 
@@ -52,7 +55,7 @@ async def db_timeout_handler(request: Request, exc: SATimeoutError) -> JSONRespo
 def get_sessionmaker():
     """Get the initialized session maker."""
     if _SessionLocal is None:
-        raise RuntimeError("Session maker not initialized. Call init_engine() at startup.")
+        init_engine()
     return _SessionLocal
 
 Base = declarative_base()

@@ -92,8 +92,7 @@ def configure_logging(level: int = logging.INFO) -> None:
 
     handler = logging.StreamHandler()
     formatter = _ReconXJsonFormatter(
-        fmt="%(timestamp)s %(level)s %(logger)s %(message)s",
-        rename_fields={"levelname": "level", "name": "logger"},
+        fmt="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
     handler.setFormatter(formatter)
     handler.addFilter(SensitiveDataFilter())

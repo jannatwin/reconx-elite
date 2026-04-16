@@ -1,5 +1,6 @@
 """Circuit breaker pattern for AI API resilience."""
 import asyncio
+import threading
 import time
 from enum import Enum
 from typing import Callable, Any, Optional
@@ -29,7 +30,7 @@ class CircuitBreakerConfig:
 
 
 class CircuitBreaker:
-    """Circuit breaker for API resilience."""
+    """Circuit breaker for API resilience with thread-safe state management."""
     
     def __init__(self, config: CircuitBreakerConfig = None):
         """Initialize circuit breaker."""
@@ -39,25 +40,27 @@ class CircuitBreaker:
         self.last_failure_time = None
         self.success_count_in_half_open = 0
         self.success_threshold_in_half_open = 2
+        self._lock = threading.Lock()  # FIX #2: Thread-safe state transitions
     
     def is_circuit_open(self) -> bool:
-        """Check if circuit is open."""
-        if self.state == CircuitState.CLOSED:
+        """Check if circuit is open (thread-safe)."""
+        with self._lock:
+            if self.state == CircuitState.CLOSED:
+                return False
+            
+            if self.state == CircuitState.OPEN:
+                # Check if recovery timeout has elapsed
+                if self.last_failure_time:
+                    elapsed = time.time() - self.last_failure_time
+                    if elapsed >= self.config.recovery_timeout_seconds:
+                        # Transition to half-open (atomic within lock)
+                        self.state = CircuitState.HALF_OPEN
+                        self.success_count_in_half_open = 0
+                        return False
+                return True
+            
+            # Half-open state
             return False
-        
-        if self.state == CircuitState.OPEN:
-            # Check if recovery timeout has elapsed
-            if self.last_failure_time:
-                elapsed = time.time() - self.last_failure_time
-                if elapsed >= self.config.recovery_timeout_seconds:
-                    # Transition to half-open
-                    self.state = CircuitState.HALF_OPEN
-                    self.success_count_in_half_open = 0
-                    return False
-            return True
-        
-        # Half-open state
-        return False
     
     async def call(self, func: Callable, *args: Any, **kwargs: Any) -> Any:
         """Execute function with circuit breaker protection."""
@@ -69,54 +72,58 @@ class CircuitBreaker:
         try:
             result = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
             
-            # Record success
-            if self.state == CircuitState.HALF_OPEN:
-                self.success_count_in_half_open += 1
-                if self.success_count_in_half_open >= self.success_threshold_in_half_open:
-                    # Transition back to closed
-                    self.state = CircuitState.CLOSED
+            # Record success (thread-safe)
+            with self._lock:
+                if self.state == CircuitState.HALF_OPEN:
+                    self.success_count_in_half_open += 1
+                    if self.success_count_in_half_open >= self.success_threshold_in_half_open:
+                        # Transition back to closed
+                        self.state = CircuitState.CLOSED
+                        self.failure_count = 0
+                elif self.state == CircuitState.CLOSED:
                     self.failure_count = 0
-            elif self.state == CircuitState.CLOSED:
-                self.failure_count = 0
             
             return result
         
         except self.config.expected_exceptions as e:
-            # Record failure
-            self.failure_count += 1
-            self.last_failure_time = time.time()
-            
-            if self.state == CircuitState.HALF_OPEN:
-                # Failed during recovery attempt
-                self.state = CircuitState.OPEN
+            # Record failure (thread-safe)
+            with self._lock:
+                self.failure_count += 1
                 self.last_failure_time = time.time()
-            elif self.failure_count >= self.config.failure_threshold:
-                # Too many failures
-                self.state = CircuitState.OPEN
+                
+                if self.state == CircuitState.HALF_OPEN:
+                    # Failed during recovery attempt
+                    self.state = CircuitState.OPEN
+                    self.last_failure_time = time.time()
+                elif self.failure_count >= self.config.failure_threshold:
+                    # Too many failures
+                    self.state = CircuitState.OPEN
             
             raise
     
     def reset(self) -> None:
-        """Reset circuit breaker to closed state."""
-        self.state = CircuitState.CLOSED
-        self.failure_count = 0
-        self.last_failure_time = None
-        self.success_count_in_half_open = 0
+        """Reset circuit breaker to closed state (thread-safe)."""
+        with self._lock:
+            self.state = CircuitState.CLOSED
+            self.failure_count = 0
+            self.last_failure_time = None
+            self.success_count_in_half_open = 0
     
     def get_status(self) -> dict:
-        """Get circuit breaker status."""
-        return {
-            "state": self.state.value,
-            "failure_count": self.failure_count,
-            "failure_threshold": self.config.failure_threshold,
-            "last_failure_time": self.last_failure_time,
-            "time_until_recovery": max(
-                0,
-                self.config.recovery_timeout_seconds - (
-                    time.time() - self.last_failure_time
-                ) if self.last_failure_time else 0
-            ) if self.state == CircuitState.OPEN else None
-        }
+        """Get circuit breaker status (thread-safe)."""
+        with self._lock:
+            return {
+                "state": self.state.value,
+                "failure_count": self.failure_count,
+                "failure_threshold": self.config.failure_threshold,
+                "last_failure_time": self.last_failure_time,
+                "time_until_recovery": max(
+                    0,
+                    self.config.recovery_timeout_seconds - (
+                        time.time() - self.last_failure_time
+                    ) if self.last_failure_time else 0
+                ) if self.state == CircuitState.OPEN else None
+            }
 
 
 class CircuitBreakerOpenError(Exception):

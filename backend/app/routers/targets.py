@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+import asyncio
+import logging
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.cache import build_cache_key, get_cached, invalidate, set_cached
@@ -13,12 +15,22 @@ from app.schemas.target import TargetCreate, TargetListItemOut, TargetOut, Targe
 from app.services.audit import log_audit_event
 from app.services.domain import normalize_domain
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/targets", tags=["targets"])
+
+
+async def _invalidate_targets_cache(cache_key: str) -> None:
+    try:
+        await asyncio.wait_for(invalidate(cache_key), timeout=2.0)
+    except (asyncio.TimeoutError, Exception) as exc:
+        logger.warning("Cache invalidation failed: %s", exc, exc_info=False)
 
 
 @router.post("", response_model=TargetOut)
 @limiter.limit(settings.write_rate_limit)
-async def create_target(
+def create_target(  # FIX #7: Remove async - only sync db operations
+    background_tasks: BackgroundTasks,
     request: Request,
     payload: TargetCreate,
     db: Session = Depends(get_db),
@@ -44,21 +56,30 @@ async def create_target(
         ip_address=request.client.host if request.client else None,
         metadata_json={"target_id": target.id, "domain": target.domain},
     )
-    await invalidate(build_cache_key(user.id, "targets"))
+    background_tasks.add_task(_invalidate_targets_cache, build_cache_key(user.id, "targets"))
+
     return target
 
 
 @router.get("", response_model=list[TargetListItemOut])
 @limiter.limit(settings.read_rate_limit)
-async def list_targets(
+async def list_targets(  # FIX #7: Keep async - uses await on cache
     request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     cache_key = build_cache_key(user.id, "targets")
-    cached = await get_cached(cache_key)
-    if cached is not None:
-        return [TargetListItemOut.model_validate(item) for item in cached]
+    
+    # FIX #19: Add timeout to cache operations
+    try:
+        cached = await asyncio.wait_for(
+            get_cached(cache_key),
+            timeout=2.0
+        )
+        if cached is not None:
+            return [TargetListItemOut.model_validate(item) for item in cached]
+    except (asyncio.TimeoutError, Exception) as e:
+        logger.warning(f"Cache read failed: {e}", exc_info=False)
 
     targets = (
         db.query(Target)
@@ -101,15 +122,25 @@ async def list_targets(
                 ),
             )
         )
-    await set_cached(cache_key, [item.model_dump(mode="json") for item in payload])
+    
+    # FIX #19: Add timeout to cache set operation
+    try:
+        await asyncio.wait_for(
+            set_cached(cache_key, [item.model_dump(mode="json") for item in payload]),
+            timeout=2.0
+        )
+    except (asyncio.TimeoutError, Exception) as e:
+        logger.warning(f"Cache write failed: {e}", exc_info=False)
+    
     return payload
 
 
 @router.put("/{target_id}", response_model=TargetOut)
 @limiter.limit(settings.write_rate_limit)
-async def update_target(
+def update_target(  # FIX #7: Remove async - only sync db operations
     target_id: int,
     payload: TargetUpdate,
+    background_tasks: BackgroundTasks,
     request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -129,13 +160,14 @@ async def update_target(
         ip_address=request.client.host if request.client else None,
         metadata_json={"target_id": target.id},
     )
-    await invalidate(build_cache_key(user.id, "targets"))
+    background_tasks.add_task(_invalidate_targets_cache, build_cache_key(user.id, "targets"))
+
     return target
 
 
 @router.get("/{target_id}", response_model=TargetOut)
 @limiter.limit(settings.read_rate_limit)
-def get_target(
+def get_target(  # FIX #7: Keep sync - only sync db operations
     target_id: int,
     request: Request,
     db: Session = Depends(get_db),
@@ -159,5 +191,6 @@ def get_target(
         raise HTTPException(status_code=404, detail="Target not found")
     target.scans.sort(key=lambda row: row.created_at, reverse=True)
     for scan in target.scans:
-        scan.logs.sort(key=lambda row: row.started_at)
+        if scan.logs:
+            scan.logs.sort(key=lambda row: row.started_at)
     return target

@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 from functools import cached_property
 
+from pydantic import field_validator, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -20,8 +21,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg2://reconx:reconx@postgres:5432/reconx"
     redis_url: str = "redis://redis:6379/0"
 
-    jwt_secret_key: str = "change-me-in-production"
-    jwt_algorithm: str = "HS256"
+    jwt_secret_key: str = Field(default="change-me-in-production", description="JWT secret key (must change in production)")
+    jwt_algorithm: str = Field(default="HS256", description="JWT algorithm")
     access_token_expire_minutes: int = 120
     refresh_token_expire_minutes: int = 10080
 
@@ -39,8 +40,8 @@ class Settings(BaseSettings):
     register_rate_limit: str = "10/minute"
     login_rate_limit: str = "20/minute"
     refresh_rate_limit: str = "30/minute"
-    read_rate_limit: str = "60/minute"
-    write_rate_limit: str = "20/minute"
+    read_rate_limit: str = "60/minute"  # Reads more permissive
+    write_rate_limit: str = "12/minute"  # Writes more restrictive
     ai_rate_limit: str = "10/minute"
     auth_rate_limit: str = "10/minute"
     scan_rate_limit: str = "12/minute"
@@ -97,7 +98,7 @@ class Settings(BaseSettings):
     gemini_max_retries: int = 3
     gemini_retry_base_seconds: float = 15.0
     gemini_retry_max_sleep_seconds: float = 90.0
-    ai_max_input_chars: int = 12000
+    ai_max_input_chars: int = Field(default=12000, ge=100, le=100000, description="Max input chars for AI (clamped to 100KB hard limit)")
     callback_url: str = "http://localhost:8000"
 
     # Advanced Reconnaissance Settings
@@ -144,10 +145,10 @@ class Settings(BaseSettings):
     interactsh_server_url: str = ""
 
     # Database connection pool tuning
-    db_pool_size: int = 20
-    db_max_overflow: int = 30
+    db_pool_size: int = Field(default=20, ge=5, le=100, description="Database connection pool size")
+    db_max_overflow: int = Field(default=30, ge=5, le=50, description="Database connection pool overflow")
     db_pool_recycle: int = 3600
-    db_pool_timeout: int = 30
+    db_pool_timeout: int = Field(default=30, ge=5, le=300, description="Database connection pool timeout")
 
     # HTTPS / proxy
     https_behind_proxy: bool = False
@@ -161,6 +162,18 @@ class Settings(BaseSettings):
 
     # Metrics
     metrics_enabled: bool = True
+
+    @field_validator('jwt_secret_key')
+    @classmethod
+    def validate_jwt_secret(cls, v: str) -> str:
+        """Validate JWT secret key has been changed and is sufficiently long."""
+        if v == "change-me-in-production":
+            import warnings
+            warnings.warn("JWT_SECRET_KEY is using default value. MUST be changed in production!", RuntimeWarning)
+            return v
+        if len(v) < 32:
+            raise ValueError("JWT_SECRET_KEY must be at least 32 characters long")
+        return v
 
     @cached_property
     def cors_allowed_origins_list(self) -> list[str]:

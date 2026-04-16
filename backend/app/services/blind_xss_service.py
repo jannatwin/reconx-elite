@@ -6,12 +6,12 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models.blind_xss_hit import BlindXssHit
-from app.models.payload_opportunity import PayloadOpportunity
-from app.models.user import User
 
 
 class BlindXssService:
     """Service for managing blind XSS tokens and hits."""
+
+    PLACEHOLDER_IP_ADDRESS = "0.0.0.0"
 
     @staticmethod
     def generate_unique_token() -> str:
@@ -38,39 +38,34 @@ class BlindXssService:
     ) -> Optional[BlindXssHit]:
         """Record a blind XSS hit in the database."""
 
-        # Find the user associated with this token
         hit = db.query(BlindXssHit).filter(BlindXssHit.token == token).first()
         if not hit:
             return None  # Token not found
 
-        # Create new hit record
-        new_hit = BlindXssHit(
-            user_id=hit.user_id,
-            token=token,
-            payload_opportunity_id=hit.payload_opportunity_id,
-            ip_address=ip_address,
-            user_agent=user_agent,
-            headers_json=headers or {},
-            cookies_json=cookies or {},
-            referrer=referrer,
-            url_path=url_path,
-            method=method,
-            raw_request=raw_request,
-            processed=0,  # Mark as unprocessed
-        )
-
-        db.add(new_hit)
+        # Reuse the token registration row so callbacks do not violate the unique token constraint.
+        hit.ip_address = ip_address
+        hit.user_agent = user_agent
+        hit.headers_json = headers or {}
+        hit.cookies_json = cookies or {}
+        hit.referrer = referrer
+        hit.url_path = url_path
+        hit.method = method
+        hit.raw_request = raw_request
+        hit.processed = 0
         db.commit()
-        db.refresh(new_hit)
+        db.refresh(hit)
 
-        return new_hit
+        return hit
 
     @staticmethod
     def get_user_hits(db: Session, user_id: int, limit: int = 100) -> list[BlindXssHit]:
         """Get all blind XSS hits for a user."""
         return (
             db.query(BlindXssHit)
-            .filter(BlindXssHit.user_id == user_id)
+            .filter(
+                BlindXssHit.user_id == user_id,
+                BlindXssHit.ip_address != BlindXssService.PLACEHOLDER_IP_ADDRESS,
+            )
             .order_by(BlindXssHit.triggered_at.desc())
             .limit(limit)
             .all()
@@ -81,7 +76,11 @@ class BlindXssService:
         """Get unprocessed blind XSS hits for a user."""
         return (
             db.query(BlindXssHit)
-            .filter(BlindXssHit.user_id == user_id, BlindXssHit.processed == 0)
+            .filter(
+                BlindXssHit.user_id == user_id,
+                BlindXssHit.processed == 0,
+                BlindXssHit.ip_address != BlindXssService.PLACEHOLDER_IP_ADDRESS,
+            )
             .order_by(BlindXssHit.triggered_at.desc())
             .all()
         )
@@ -108,7 +107,7 @@ class BlindXssService:
             user_id=user_id,
             token=token,
             payload_opportunity_id=payload_opportunity_id,
-            ip_address="0.0.0.0",  # Placeholder
+            ip_address=BlindXssService.PLACEHOLDER_IP_ADDRESS,
             processed=0,
         )
 

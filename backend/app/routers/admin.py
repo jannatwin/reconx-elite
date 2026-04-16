@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 import redis
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -168,7 +169,7 @@ def system_health(admin: User = Depends(require_admin), db: Session = Depends(ge
 
     # Check PostgreSQL
     try:
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         health["postgresql"] = "healthy"
     except Exception:
         health["postgresql"] = "unhealthy"

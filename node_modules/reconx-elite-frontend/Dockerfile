@@ -5,17 +5,17 @@ WORKDIR /app
 ARG VITE_API_BASE_URL=http://localhost:8000
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 
-# Copy and install dependencies
-COPY package*.json ./
-COPY frontend/package.json ./frontend/
+# Copy package files first for better layer caching
+COPY frontend/package*.json ./frontend/
 
-RUN npm ci -w reconx-elite-frontend
+WORKDIR /app/frontend
+RUN npm ci
 
 # Copy source
-COPY frontend ./frontend
+COPY frontend ./
 
 # Build
-RUN npm run build -w reconx-elite-frontend && \
+RUN npm run build && \
     test -d /app/frontend/dist || (echo "Build failed"; exit 1)
 
 # Runtime stage
@@ -28,13 +28,14 @@ RUN addgroup -S appuser && adduser -S appuser -G appuser && \
 
 # Copy nginx config
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+RUN nginx -t  # Validate nginx configuration syntax
+
+# Optimize nginx — only uncomment gzip if not already enabled
+RUN grep -q "# gzip" /etc/nginx/nginx.conf && \
+    sed -i 's/# gzip/gzip/' /etc/nginx/nginx.conf || true
 
 # Copy built app
 COPY --from=build --chown=appuser:appuser /app/frontend/dist /usr/share/nginx/html
-
-# Optimize nginx
-RUN sed -i 's/worker_processes auto;/worker_processes auto;/' /etc/nginx/nginx.conf && \
-    sed -i 's/# gzip/gzip/' /etc/nginx/nginx.conf
 
 USER appuser
 

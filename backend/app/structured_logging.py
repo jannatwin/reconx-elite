@@ -34,9 +34,17 @@ class CustomJsonFormatter(logging.Formatter):
                 "traceback": self.formatException(record.exc_info)
             }
         
-        # Add extra fields
-        if hasattr(record, "extra_data"):
-            log_data.update(record.extra_data)
+        # FIX #12: Properly access extra fields from LogRecord.__dict__
+        for key, value in record.__dict__.items():
+            # Skip standard LogRecord attributes
+            if not key.startswith('_') and key not in {
+                'name', 'msg', 'args', 'created', 'filename', 'funcName',
+                'levelname', 'levelno', 'lineno', 'module', 'msecs',
+                'message', 'pathname', 'process', 'processName', 'relativeCreated',
+                'thread', 'threadName', 'exc_info', 'exc_text', 'stack_info',
+                'taskName'  # Python 3.12+
+            }:
+                log_data[key] = value
         
         return json.dumps(log_data)
 
@@ -77,19 +85,11 @@ class StructuredLogger:
         message: str,
         **kwargs: Any
     ) -> None:
-        """Log event with structured data."""
-        log_method = getattr(self.logger, level.lower())
-        extra = {"extra_data": kwargs}
+        """Log event with structured data (FIX #12: Proper extra field handling)."""
+        log_method = getattr(self.logger, level.lower(), self.logger.info)
         
-        # Create a LogRecord with extra data
-        record = self.logger.makeRecord(
-            self.logger.name,
-            getattr(logging, level.upper()),
-            "(unknown file)", 0, message, (), None,
-            extra={"extra_data": kwargs}
-        )
-        
-        self.logger.handle(record)
+        # Use logger's built-in extra parameter
+        log_method(message, extra=kwargs)
     
     def log_scan_started(
         self,

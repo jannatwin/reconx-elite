@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from jose import JWTError
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -18,6 +17,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 def rate_limit_key(request: Request) -> str:
+    """Generate rate limit key from request, preferring client IP with port."""
     if hasattr(request.state, "rate_limit_key") and request.state.rate_limit_key:
         return request.state.rate_limit_key
     # Check for X-Forwarded-For header when behind reverse proxy
@@ -25,7 +25,10 @@ def rate_limit_key(request: Request) -> str:
     if forwarded_for:
         # Take the first IP from the chain (original client)
         return forwarded_for.split(",")[0].strip()
-    return get_remote_address(request)
+    # Use client IP:port for better granularity
+    if request.client:
+        return f"{request.client.host}:{request.client.port}"
+    return "unknown"
 
 
 limiter = Limiter(key_func=rate_limit_key)

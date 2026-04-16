@@ -10,27 +10,63 @@ import ErrorBoundary from "./components/ErrorBoundary";
 
 function ProtectedRoute({ children }) {
   try {
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, error } = useAuth();
+    
+    if (error) {
+      return (
+        <div style={{ padding: "20px", color: "red", fontWeight: "bold" }}>
+          Authentication error: {error.message}
+          <br />
+          <Navigate to="/login" replace />
+        </div>
+      );
+    }
+    
     return isAuthenticated ? children : <Navigate to="/login" replace />;
   } catch (error) {
     console.error("Auth context error in ProtectedRoute:", error);
-    return <Navigate to="/login" replace />;
+    return (
+      <div style={{ padding: "20px", color: "red", fontWeight: "bold" }}>
+        Failed to check authentication. Please refresh and try again.
+      </div>
+    );
   }
 }
 
 function AdminRoute({ children }) {
   try {
-    const { isAuthenticated, isAdmin } = useAuth();
+    const { isAuthenticated, isAdmin, error } = useAuth();
+    
+    if (error) {
+      return (
+        <div style={{ padding: "20px", color: "red", fontWeight: "bold" }}>
+          Authentication error: {error.message}
+          <br />
+          <Navigate to="/login" replace />
+        </div>
+      );
+    }
+    
     if (!isAuthenticated) {
       return <Navigate to="/login" replace />;
     }
     if (!isAdmin) {
-      return <Navigate to="/" replace />;
+      return (
+        <div style={{ padding: "20px", color: "orange", fontWeight: "bold" }}>
+          Access denied. Admin privileges required.
+          <br />
+          <Navigate to="/" replace />
+        </div>
+      );
     }
     return children;
   } catch (error) {
     console.error("Auth context error in AdminRoute:", error);
-    return <Navigate to="/login" replace />;
+    return (
+      <div style={{ padding: "20px", color: "red", fontWeight: "bold" }}>
+        Failed to verify admin status. Please refresh and try again.
+      </div>
+    );
   }
 }
 
