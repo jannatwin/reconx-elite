@@ -9,7 +9,7 @@ ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 COPY package*.json ./
 COPY frontend/package.json ./frontend/
 
-RUN npm ci --omit=dev -w reconx-elite-frontend
+RUN npm ci -w reconx-elite-frontend
 
 # Copy source
 COPY frontend ./frontend
