@@ -50,7 +50,6 @@ class EndpointOut(BaseModel):
         from_attributes = True
 
 
-
 class JavaScriptAssetOut(BaseModel):
     id: int
     url: str

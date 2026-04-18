@@ -10,7 +10,10 @@ from app.models.user import User
 from app.models.vulnerability import Vulnerability
 from app.models.exploit_validation import ExploitValidation
 from app.services.exploit_validator import validator
-from app.tasks.validation_tasks import send_manual_request_task, validate_vulnerability_task
+from app.tasks.validation_tasks import (
+    send_manual_request_task,
+    validate_vulnerability_task,
+)
 
 router = APIRouter(prefix="/validation", tags=["exploit-validation"])
 
@@ -21,29 +24,25 @@ async def validate_vulnerability(
     payload: str = None,
     background_tasks: BackgroundTasks = BackgroundTasks(),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Validate a vulnerability by replaying the request with payload."""
-    
+
     # Get vulnerability
-    vulnerability = db.query(Vulnerability).filter(
-        Vulnerability.id == vulnerability_id
-    ).first()
-    
+    vulnerability = (
+        db.query(Vulnerability).filter(Vulnerability.id == vulnerability_id).first()
+    )
+
     if not vulnerability:
         raise HTTPException(status_code=404, detail="Vulnerability not found")
-    
+
     # Check if user owns the scan
     if vulnerability.scan.target.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
-    
+
     # Queue validation task
-    background_tasks.add_task(
-        validate_vulnerability_task,
-        vulnerability_id,
-        payload
-    )
-    
+    background_tasks.add_task(validate_vulnerability_task, vulnerability_id, payload)
+
     return {"message": "Validation task queued", "vulnerability_id": vulnerability_id}
 
 
@@ -51,27 +50,30 @@ async def validate_vulnerability(
 async def get_validation_results(
     vulnerability_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Get validation results for a vulnerability."""
-    
+
     # Get vulnerability
-    vulnerability = db.query(Vulnerability).filter(
-        Vulnerability.id == vulnerability_id
-    ).first()
-    
+    vulnerability = (
+        db.query(Vulnerability).filter(Vulnerability.id == vulnerability_id).first()
+    )
+
     if not vulnerability:
         raise HTTPException(status_code=404, detail="Vulnerability not found")
-    
+
     # Check if user owns the scan
     if vulnerability.scan.target.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
-    
+
     # Get validation results
-    validations = db.query(ExploitValidation).filter(
-        ExploitValidation.vulnerability_id == vulnerability_id
-    ).order_by(ExploitValidation.created_at.desc()).all()
-    
+    validations = (
+        db.query(ExploitValidation)
+        .filter(ExploitValidation.vulnerability_id == vulnerability_id)
+        .order_by(ExploitValidation.created_at.desc())
+        .all()
+    )
+
     return {
         "vulnerability_id": vulnerability_id,
         "validations": [
@@ -90,7 +92,7 @@ async def get_validation_results(
                 "validation_attempts": v.validation_attempts,
             }
             for v in validations
-        ]
+        ],
     }
 
 
@@ -99,16 +101,16 @@ async def send_manual_request(
     request_data: Dict[str, Any],
     background_tasks: BackgroundTasks = BackgroundTasks(),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Send a manual HTTP request for testing."""
-    
+
     background_tasks.add_task(
         send_manual_request_task,
         current_user.id,
         request_data,
     )
-    
+
     return {"message": "Manual request task queued"}
 
 
@@ -116,22 +118,24 @@ async def send_manual_request(
 async def get_full_validation_details(
     validation_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Get full validation details including request/response."""
-    
+
     # Get validation
-    validation = db.query(ExploitValidation).filter(
-        ExploitValidation.id == validation_id
-    ).first()
-    
+    validation = (
+        db.query(ExploitValidation)
+        .filter(ExploitValidation.id == validation_id)
+        .first()
+    )
+
     if not validation:
         raise HTTPException(status_code=404, detail="Validation not found")
-    
+
     # Check if user owns the vulnerability
     if validation.vulnerability.scan.target.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
-    
+
     return {
         "id": validation.id,
         "vulnerability_id": validation.vulnerability_id,

@@ -15,7 +15,10 @@ from app.models.blind_xss_hit import BlindXssHit
 from app.routers.admin import system_health
 from app.routers.scans import _build_scan_config_from_request
 from app.routers.targets import _invalidate_targets_cache
-from app.routers.vulnerabilities import _vulnerability_cache_key, _vulnerability_cache_prefix
+from app.routers.vulnerabilities import (
+    _vulnerability_cache_key,
+    _vulnerability_cache_prefix,
+)
 from app.schemas.scan import ScanConfigRequest
 from app.services.blind_xss_service import BlindXssService
 
@@ -73,7 +76,9 @@ class TestReviewFindingFixes(unittest.TestCase):
         self.assertEqual(cfg["profile"], "extended")
 
     def test_target_cache_invalidation_helper_awaits_invalidate(self):
-        with patch("app.routers.targets.invalidate", new=AsyncMock()) as mock_invalidate:
+        with patch(
+            "app.routers.targets.invalidate", new=AsyncMock()
+        ) as mock_invalidate:
             asyncio.run(_invalidate_targets_cache("reconx:1:targets:"))
 
         mock_invalidate.assert_awaited_once_with("reconx:1:targets:")
@@ -98,7 +103,9 @@ class TestReviewFindingFixes(unittest.TestCase):
         fake_celery_module.celery_app = Mock()
         fake_celery_module.celery_app.control.inspect.return_value = fake_inspect
 
-        with patch("app.routers.admin.redis.from_url", return_value=fake_redis), patch.dict(
+        with patch(
+            "app.routers.admin.redis.from_url", return_value=fake_redis
+        ), patch.dict(
             sys.modules,
             {"app.tasks.celery_app": fake_celery_module},
         ):
@@ -109,7 +116,9 @@ class TestReviewFindingFixes(unittest.TestCase):
         self.assertEqual(result["postgresql"], "healthy")
 
     def test_logging_formatter_emits_level_without_key_error(self):
-        formatter = _ReconXJsonFormatter(fmt="%(asctime)s %(levelname)s %(name)s %(message)s")
+        formatter = _ReconXJsonFormatter(
+            fmt="%(asctime)s %(levelname)s %(name)s %(message)s"
+        )
         record = logging.LogRecord(
             name="reconx.api",
             level=logging.INFO,

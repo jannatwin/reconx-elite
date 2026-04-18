@@ -1,7 +1,9 @@
 import re
 from urllib.parse import urlparse
 
-DOMAIN_RE = re.compile(r"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9-]{1,63}(?<!-))+$")
+DOMAIN_RE = re.compile(
+    r"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9-]{1,63}(?<!-))+$"
+)
 
 
 def _host_from_user_input(value: str) -> str:
@@ -34,7 +36,23 @@ def _host_from_user_input(value: str) -> str:
 def normalize_domain(value: str) -> str:
     host = _host_from_user_input(value)
     domain = host.strip().lower().rstrip(".")
-    forbidden = (" ", "/", "\\", ":", "@", "?", "&", ";", "|", "$", "`", "'", "\"", "(", ")")
+    forbidden = (
+        " ",
+        "/",
+        "\\",
+        ":",
+        "@",
+        "?",
+        "&",
+        ";",
+        "|",
+        "$",
+        "`",
+        "'",
+        '"',
+        "(",
+        ")",
+    )
     if any(ch in domain for ch in forbidden):
         raise ValueError("Invalid domain format")
     if len(domain) > 253:

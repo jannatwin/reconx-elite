@@ -3,7 +3,9 @@ from typing import Any
 
 
 def parse_subfinder_output(stdout: str) -> list[str]:
-    return sorted({line.strip().lower() for line in stdout.splitlines() if line.strip()})
+    return sorted(
+        {line.strip().lower() for line in stdout.splitlines() if line.strip()}
+    )
 
 
 def parse_httpx_live_output(stdout: str) -> list[str]:
@@ -24,7 +26,16 @@ def parse_httpx_live_output(stdout: str) -> list[str]:
 
 def parse_httpx_enrich_output(stdout: str) -> dict[str, dict]:
     enrich_data: dict[str, dict] = {}
-    known_cdn_waf = {"cloudflare", "akamai", "fastly", "cloudfront", "incapsula", "sucuri", "imperva", "stackpath"}
+    known_cdn_waf = {
+        "cloudflare",
+        "akamai",
+        "fastly",
+        "cloudfront",
+        "incapsula",
+        "sucuri",
+        "imperva",
+        "stackpath",
+    }
     for line in stdout.splitlines():
         row = line.strip()
         if not row:
@@ -117,7 +128,15 @@ def parse_httpx_headers_output(stdout: str) -> list[dict[str, Any]]:
         except json.JSONDecodeError:
             continue
         headers = {k.lower(): v for k, v in (data.get("header") or {}).items()}
-        missing = [k for k in ("content-security-policy", "x-frame-options", "strict-transport-security") if k not in headers]
+        missing = [
+            k
+            for k in (
+                "content-security-policy",
+                "x-frame-options",
+                "strict-transport-security",
+            )
+            if k not in headers
+        ]
         if not missing:
             continue
         host = data.get("url") or data.get("input") or ""

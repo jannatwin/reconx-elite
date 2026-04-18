@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from datetime import datetime
 
+
 class AIReportOut(BaseModel):
     id: int
     vulnerability_id: int

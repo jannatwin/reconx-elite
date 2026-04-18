@@ -67,7 +67,9 @@ def execute_with_retry(
                 return_code=proc.returncode,
                 stdout=proc.stdout or "",
                 stderr=proc.stderr or "",
-                error=None if proc.returncode == 0 else f"non_zero_exit:{proc.returncode}",
+                error=(
+                    None if proc.returncode == 0 else f"non_zero_exit:{proc.returncode}"
+                ),
             )
         except subprocess.TimeoutExpired as exc:
             ended_at = datetime.now(timezone.utc)

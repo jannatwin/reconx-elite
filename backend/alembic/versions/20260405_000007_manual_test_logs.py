@@ -28,13 +28,27 @@ def upgrade() -> None:
         sa.Column("success", sa.Boolean(), nullable=False),
         sa.Column("status_code", sa.Integer(), nullable=True),
         sa.Column("summary_json", sa.JSON(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["vulnerability_id"], ["vulnerabilities.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(
+            ["vulnerability_id"], ["vulnerabilities.id"], ondelete="SET NULL"
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(op.f("ix_manual_test_logs_id"), "manual_test_logs", ["id"], unique=False)
-    op.create_index(op.f("ix_manual_test_logs_user_id"), "manual_test_logs", ["user_id"], unique=False)
+    op.create_index(
+        op.f("ix_manual_test_logs_id"), "manual_test_logs", ["id"], unique=False
+    )
+    op.create_index(
+        op.f("ix_manual_test_logs_user_id"),
+        "manual_test_logs",
+        ["user_id"],
+        unique=False,
+    )
 
 
 def downgrade() -> None:

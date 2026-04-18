@@ -20,7 +20,12 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.add_column(
         "targets",
-        sa.Column("enable_ai_processing", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+        sa.Column(
+            "enable_ai_processing",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.text("true"),
+        ),
     )
     op.alter_column("targets", "enable_ai_processing", server_default=None)
 

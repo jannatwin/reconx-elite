@@ -28,72 +28,84 @@ SCHEMA HINTS:
 - Prefer 'stop-at-first-match: true' for performance where applicable.
 """
 
+
 class AITemplateGenerator:
     """Service to generate Nuclei templates using AI."""
 
     async def generate_from_description(self, description: str) -> Optional[str]:
         """Generate a Nuclei template from a natural language description."""
-        
+
         if not _is_ai_enabled(task="report"):
             logger.error("AI report provider not configured for template generation")
             return None
 
-        user_message = json.dumps({
-            "task": "generate_nuclei_template",
-            "source_type": "description",
-            "content": description
-        })
+        user_message = json.dumps(
+            {
+                "task": "generate_nuclei_template",
+                "source_type": "description",
+                "content": description,
+            }
+        )
 
         try:
             template_yaml = await _get_model_response(
                 prompt=user_message,
                 system_instruction=TEMPLATE_GENERATOR_PROMPT,
-                task="report"
+                task="report",
             )
-            
+
             # Clean up potential markdown blocks if AI ignored instructions
             if "```yaml" in template_yaml:
-                template_yaml = template_yaml.split("```yaml")[1].split("```")[0].strip()
+                template_yaml = (
+                    template_yaml.split("```yaml")[1].split("```")[0].strip()
+                )
             elif "```" in template_yaml:
                 template_yaml = template_yaml.split("```")[1].split("```")[0].strip()
-                
+
             return template_yaml.strip()
-            
+
         except Exception as e:
             logger.error(f"Failed to generate template from description: {e}")
             return None
 
-    async def generate_from_http(self, request: str, response: Optional[str] = None) -> Optional[str]:
+    async def generate_from_http(
+        self, request: str, response: Optional[str] = None
+    ) -> Optional[str]:
         """Generate a Nuclei template from raw HTTP request/response."""
-        
+
         if not _is_ai_enabled(task="report"):
             logger.error("AI report provider not configured for template generation")
             return None
 
-        user_message = json.dumps({
-            "task": "generate_nuclei_template",
-            "source_type": "http_traffic",
-            "request": request,
-            "response": response
-        })
+        user_message = json.dumps(
+            {
+                "task": "generate_nuclei_template",
+                "source_type": "http_traffic",
+                "request": request,
+                "response": response,
+            }
+        )
 
         try:
             template_yaml = await _get_model_response(
                 prompt=user_message,
                 system_instruction=TEMPLATE_GENERATOR_PROMPT,
-                task="report"
+                task="report",
             )
-            
+
             # Clean up markdown
             if "```yaml" in template_yaml:
-                template_yaml = template_yaml.split("```yaml")[1].split("```")[0].strip()
+                template_yaml = (
+                    template_yaml.split("```yaml")[1].split("```")[0].strip()
+                )
             elif "```" in template_yaml:
                 template_yaml = template_yaml.split("```")[1].split("```")[0].strip()
-                
+
             return template_yaml.strip()
-            
+
         except Exception as e:
             logger.error(f"Failed to generate template from HTTP: {e}")
             return None
+
 
 template_generator = AITemplateGenerator()

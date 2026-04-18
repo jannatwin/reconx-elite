@@ -4,22 +4,24 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel, field_validator
 
-DOMAIN_PATTERN = re.compile(r"^(?!-)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*\.[a-z]{2,63}$")
+DOMAIN_PATTERN = re.compile(
+    r"^(?!-)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*\.[a-z]{2,63}$"
+)
 
 
 class ScanRequest(BaseModel):
     target: str
 
-    @field_validator('target')
+    @field_validator("target")
     @classmethod
     def normalize_target(cls, value: str) -> str:
         value = value.strip().lower()
-        value = re.sub(r'^https?://', '', value)
-        value = re.sub(r'^www\.', '', value)
+        value = re.sub(r"^https?://", "", value)
+        value = re.sub(r"^www\.", "", value)
         if len(value) > 253:
-            raise ValueError('Domain name too long (max 253 characters per RFC 1035)')
+            raise ValueError("Domain name too long (max 253 characters per RFC 1035)")
         if not DOMAIN_PATTERN.fullmatch(value):
-            raise ValueError('Invalid domain format')
+            raise ValueError("Invalid domain format")
         return value
 
 

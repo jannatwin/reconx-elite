@@ -19,7 +19,9 @@ class BlindXssService:
         return secrets.token_hex(16)  # 32 characters
 
     @staticmethod
-    def create_payload_with_token(base_payload: str, token: str, domain: str = "yourdomain.com") -> str:
+    def create_payload_with_token(
+        base_payload: str, token: str, domain: str = "yourdomain.com"
+    ) -> str:
         """Replace __TOKEN__ placeholder in payload with actual token and domain."""
         return base_payload.replace("__TOKEN__", f"{domain}/xss/{token}")
 

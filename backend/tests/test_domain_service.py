@@ -13,7 +13,9 @@ class DomainServiceTests(unittest.TestCase):
 
     def test_accepts_url_and_strips_to_host(self):
         self.assertEqual(normalize_domain("https://example.com"), "example.com")
-        self.assertEqual(normalize_domain("HTTPS://Example.COM/path?q=1"), "example.com")
+        self.assertEqual(
+            normalize_domain("HTTPS://Example.COM/path?q=1"), "example.com"
+        )
         self.assertEqual(normalize_domain("//cdn.example.com/foo"), "cdn.example.com")
         self.assertEqual(normalize_domain("example.com/"), "example.com")
 

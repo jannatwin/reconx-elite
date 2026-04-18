@@ -7,10 +7,21 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.security import create_access_token, create_refresh_token, decode_token, hash_password, verify_password
+from app.core.security import (
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+    hash_password,
+    verify_password,
+)
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
-from app.schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
+from app.schemas.auth import (
+    LoginRequest,
+    RefreshRequest,
+    RegisterRequest,
+    TokenResponse,
+)
 from app.services.audit import log_audit_event
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -34,14 +45,18 @@ def rate_limit_key(request: Request) -> str:
 limiter = Limiter(key_func=rate_limit_key)
 
 
-@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED
+)
 @limiter.limit(settings.register_rate_limit)
 def register(payload: RegisterRequest, request: Request, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    user = User(email=payload.email, password_hash=hash_password(payload.password), role="user")
+    user = User(
+        email=payload.email, password_hash=hash_password(payload.password), role="user"
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -49,7 +64,12 @@ def register(payload: RegisterRequest, request: Request, db: Session = Depends(g
     refresh, jti, expires_at = create_refresh_token(str(user.id), user.role)
     db.add(RefreshToken(user_id=user.id, token_jti=jti, expires_at=expires_at))
     db.commit()
-    log_audit_event(db, action="user_registered", user_id=user.id, ip_address=request.client.host if request.client else None)
+    log_audit_event(
+        db,
+        action="user_registered",
+        user_id=user.id,
+        ip_address=request.client.host if request.client else None,
+    )
     return TokenResponse(access_token=access, refresh_token=refresh)
 
 
@@ -75,7 +95,9 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
 
 @router.post("/refresh", response_model=TokenResponse)
 @limiter.limit(settings.refresh_rate_limit)
-def refresh_token(payload: RefreshRequest, request: Request, db: Session = Depends(get_db)):
+def refresh_token(
+    payload: RefreshRequest, request: Request, db: Session = Depends(get_db)
+):
     try:
         claims = decode_token(payload.refresh_token)
     except (JWTError, ValueError) as exc:
@@ -91,10 +113,16 @@ def refresh_token(payload: RefreshRequest, request: Request, db: Session = Depen
 
     stored = (
         db.query(RefreshToken)
-        .filter(RefreshToken.token_jti == token_jti, RefreshToken.user_id == int(user_id))
+        .filter(
+            RefreshToken.token_jti == token_jti, RefreshToken.user_id == int(user_id)
+        )
         .first()
     )
-    if not stored or stored.is_revoked or stored.expires_at < datetime.now(timezone.utc):
+    if (
+        not stored
+        or stored.is_revoked
+        or stored.expires_at < datetime.now(timezone.utc)
+    ):
         raise HTTPException(status_code=401, detail="Refresh token revoked or expired")
 
     user = db.query(User).filter(User.id == int(user_id)).first()

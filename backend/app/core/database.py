@@ -12,6 +12,7 @@ _engine = None
 _SessionLocal = None
 _engine_lock = threading.Lock()
 
+
 def init_engine():
     """Initialize the database engine and session maker at application startup."""
     global _engine, _SessionLocal
@@ -27,9 +28,12 @@ def init_engine():
                 echo=False,
                 connect_args={
                     "connect_timeout": 10,
-                }
+                },
             )
-            _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
+            _SessionLocal = sessionmaker(
+                autocommit=False, autoflush=False, bind=_engine
+            )
+
 
 def get_engine():
     """Get the initialized database engine."""
@@ -52,11 +56,13 @@ async def db_timeout_handler(request: Request, exc: SATimeoutError) -> JSONRespo
         media_type="application/problem+json",
     )
 
+
 def get_sessionmaker():
     """Get the initialized session maker."""
     if _SessionLocal is None:
         init_engine()
     return _SessionLocal
+
 
 Base = declarative_base()
 

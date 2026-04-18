@@ -16,7 +16,9 @@ from app.services.tool_executor import ToolExecutionResult, execute_with_retry
 
 
 def run_subfinder(domain: str) -> tuple[list[str], ToolExecutionResult]:
-    result = execute_with_retry("subfinder", ["subfinder", "-silent", "-d", domain], timeout_seconds=120)
+    result = execute_with_retry(
+        "subfinder", ["subfinder", "-silent", "-d", domain], timeout_seconds=120
+    )
     if result.status != "success":
         return [], result
     return parse_subfinder_output(result.stdout), result
@@ -36,12 +38,24 @@ def run_httpx(hosts: list[str]) -> tuple[list[str], ToolExecutionResult | None]:
     return parse_httpx_live_output(result.stdout), result
 
 
-def run_httpx_enrich(hosts: list[str]) -> tuple[dict[str, dict], ToolExecutionResult | None]:
+def run_httpx_enrich(
+    hosts: list[str],
+) -> tuple[dict[str, dict], ToolExecutionResult | None]:
     if not hosts:
         return {}, None
     result = execute_with_retry(
         "httpx",
-        ["httpx", "-silent", "-json", "-ip", "-tech-detect", "-cdn", "-cname", "-title", "-status-code"],
+        [
+            "httpx",
+            "-silent",
+            "-json",
+            "-ip",
+            "-tech-detect",
+            "-cdn",
+            "-cname",
+            "-title",
+            "-status-code",
+        ],
         stdin_payload="\n".join(hosts) + "\n",
         timeout_seconds=180,
     )
@@ -60,13 +74,17 @@ def run_gau(targets: str | list[str]) -> tuple[list[str], ToolExecutionResult]:
             timeout_seconds=180,
         )
     else:
-        result = execute_with_retry("gau", ["gau", "--subs", targets], timeout_seconds=180)
+        result = execute_with_retry(
+            "gau", ["gau", "--subs", targets], timeout_seconds=180
+        )
     if result.status != "success":
         return [], result
     return parse_gau_output(result.stdout), result
 
 
-def run_nuclei(targets: list[str], config: dict | None = None) -> tuple[list[dict], ToolExecutionResult | None]:
+def run_nuclei(
+    targets: list[str], config: dict | None = None
+) -> tuple[list[dict], ToolExecutionResult | None]:
     if not targets:
         return [], None
     command = ["nuclei", "-silent", "-jsonl"]
@@ -82,7 +100,9 @@ def run_nuclei(targets: list[str], config: dict | None = None) -> tuple[list[dic
         extra_tags.append("ssrf")
     if nex.get("include_missing_headers"):
         extra_tags.append("misconfig")
-    tag_union = selected_templates + [t for t in extra_tags if t not in selected_templates]
+    tag_union = selected_templates + [
+        t for t in extra_tags if t not in selected_templates
+    ]
     if tag_union:
         command.extend(["-tags", ",".join(tag_union)])
     if severity_filter:
@@ -135,11 +155,17 @@ def run_waybackurls(domain: str) -> tuple[list[str], ToolExecutionResult | None]
     )
     if result.status != "success":
         return [], result
-    urls = [line.strip() for line in result.stdout.splitlines() if line.strip().startswith("http")]
+    urls = [
+        line.strip()
+        for line in result.stdout.splitlines()
+        if line.strip().startswith("http")
+    ]
     return urls[: settings.scan_wayback_max_urls], result
 
 
-def run_katana(seeds: list[str], depth: int) -> tuple[list[str], ToolExecutionResult | None]:
+def run_katana(
+    seeds: list[str], depth: int
+) -> tuple[list[str], ToolExecutionResult | None]:
     kat = _which_or_none("katana")
     if not kat or not seeds:
         return [], None
@@ -165,7 +191,9 @@ def run_katana(seeds: list[str], depth: int) -> tuple[list[str], ToolExecutionRe
     return out_lines[: settings.scan_katana_max_urls], last_res
 
 
-def run_ffuf_dns(domain: str, wordlist_path: str, max_labels: int) -> tuple[list[str], ToolExecutionResult | None]:
+def run_ffuf_dns(
+    domain: str, wordlist_path: str, max_labels: int
+) -> tuple[list[str], ToolExecutionResult | None]:
     ffuf = _which_or_none("ffuf")
     if not ffuf or not wordlist_path or not os.path.isfile(wordlist_path):
         return [], None
@@ -212,11 +240,15 @@ def run_ffuf_dns(domain: str, wordlist_path: str, max_labels: int) -> tuple[list
             pass
 
 
-def run_ffuf_dirs(base_url: str, wordlist_path: str, max_matches: int) -> tuple[list[str], ToolExecutionResult | None]:
+def run_ffuf_dirs(
+    base_url: str, wordlist_path: str, max_matches: int
+) -> tuple[list[str], ToolExecutionResult | None]:
     ffuf = _which_or_none("ffuf")
     if not ffuf or not wordlist_path or not os.path.isfile(wordlist_path):
         return [], None
-    if not base_url.rstrip("/").startswith(tuple(f"{s}://" for s in settings.allowed_schemes)):
+    if not base_url.rstrip("/").startswith(
+        tuple(f"{s}://" for s in settings.allowed_schemes)
+    ):
         return [], None
     fd, path = tempfile.mkstemp(suffix=".json", prefix="ffuf_dir_")
     os.close(fd)
@@ -261,7 +293,9 @@ def run_ffuf_dirs(base_url: str, wordlist_path: str, max_matches: int) -> tuple[
             pass
 
 
-def run_nmap_ports(hosts: list[str], ports: str) -> tuple[str, ToolExecutionResult | None]:
+def run_nmap_ports(
+    hosts: list[str], ports: str
+) -> tuple[str, ToolExecutionResult | None]:
     nmap_bin = _which_or_none("nmap")
     if not nmap_bin or not hosts:
         return "", None
@@ -274,7 +308,9 @@ def run_nmap_ports(hosts: list[str], ports: str) -> tuple[str, ToolExecutionResu
     return result.stdout or "", result
 
 
-def run_gowitness_screenshots(hosts_file_lines: list[str], out_dir: str, delay: int) -> tuple[str, ToolExecutionResult | None]:
+def run_gowitness_screenshots(
+    hosts_file_lines: list[str], out_dir: str, delay: int
+) -> tuple[str, ToolExecutionResult | None]:
     gw = _which_or_none("gowitness")
     if not gw or not hosts_file_lines:
         return "", None
@@ -286,7 +322,18 @@ def run_gowitness_screenshots(hosts_file_lines: list[str], out_dir: str, delay: 
             fh.write("\n".join(hosts_file_lines[:500]))
         result = execute_with_retry(
             "gowitness",
-            [gw, "scan", "file", "-f", list_path, "-P", out_dir, "--disable-logging", "--delay", str(delay)],
+            [
+                gw,
+                "scan",
+                "file",
+                "-f",
+                list_path,
+                "-P",
+                out_dir,
+                "--disable-logging",
+                "--delay",
+                str(delay),
+            ],
             timeout_seconds=settings.scan_gowitness_timeout_seconds,
         )
         return out_dir, result
@@ -341,7 +388,9 @@ def run_dalfox_url(url: str) -> tuple[str, ToolExecutionResult | None]:
     return result.stdout or "", result
 
 
-def run_masscan_hosts(hosts: list[str], rate: int) -> tuple[str, ToolExecutionResult | None]:
+def run_masscan_hosts(
+    hosts: list[str], rate: int
+) -> tuple[str, ToolExecutionResult | None]:
     ms = _which_or_none("masscan")
     if not ms or not hosts:
         return "", None

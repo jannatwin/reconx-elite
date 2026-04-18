@@ -44,6 +44,7 @@ def _log_manual_test(
 
 class CustomRequest(BaseModel):
     """Model for custom HTTP request."""
+
     method: str = Field(..., description="HTTP method (GET, POST, PUT, etc.)")
     url: str = Field(..., description="Target URL")
     headers: Optional[Dict[str, str]] = Field(None, description="Custom headers")
@@ -53,6 +54,7 @@ class CustomRequest(BaseModel):
 
 class PayloadTestRequest(BaseModel):
     """Model for payload testing request."""
+
     base_request: CustomRequest = Field(..., description="Base request to modify")
     payload_type: str = Field(..., description="Type of payloads to test")
     target_param: Optional[str] = Field(None, description="Parameter to inject into")
@@ -63,17 +65,13 @@ async def send_custom_request(
     request: CustomRequest,
     background_tasks: BackgroundTasks = BackgroundTasks(),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Send a custom HTTP request for manual testing."""
-    
+
     # Queue request task
-    background_tasks.add_task(
-        manual_request_task,
-        current_user.id,
-        request.dict()
-    )
-    
+    background_tasks.add_task(manual_request_task, current_user.id, request.dict())
+
     return {"message": "Manual request task queued"}
 
 
@@ -84,7 +82,7 @@ async def send_custom_request_sync(
     current_user: User = Depends(get_current_user),
 ):
     """Send a custom HTTP request synchronously."""
-    
+
     result = await manual_tester.send_custom_request(**request.dict())
     ok = bool(result.get("success", False))
     _log_manual_test(
@@ -109,25 +107,21 @@ async def test_payloads(
     request: PayloadTestRequest,
     background_tasks: BackgroundTasks = BackgroundTasks(),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Test multiple payload variations."""
-    
+
     # Validate payload type
     available_types = manual_tester.get_payload_templates()
     if request.payload_type not in available_types:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid payload type. Available: {list(available_types.keys())}"
+            detail=f"Invalid payload type. Available: {list(available_types.keys())}",
         )
-    
+
     # Queue testing task
-    background_tasks.add_task(
-        payload_testing_task,
-        current_user.id,
-        request.dict()
-    )
-    
+    background_tasks.add_task(payload_testing_task, current_user.id, request.dict())
+
     return {"message": "Payload testing task queued"}
 
 
@@ -138,19 +132,17 @@ async def test_payloads_sync(
     current_user: User = Depends(get_current_user),
 ):
     """Test multiple payload variations synchronously."""
-    
+
     # Validate payload type
     available_types = manual_tester.get_payload_templates()
     if request.payload_type not in available_types:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid payload type. Available: {list(available_types.keys())}"
+            detail=f"Invalid payload type. Available: {list(available_types.keys())}",
         )
-    
+
     results = await manual_tester.test_payload_variations(
-        request.base_request.dict(),
-        request.payload_type,
-        request.target_param
+        request.base_request.dict(), request.payload_type, request.target_param
     )
     detections = sum(1 for r in results if r.get("payload_detected", False))
     _log_manual_test(
@@ -175,13 +167,11 @@ async def test_payloads_sync(
 
 
 @router.get("/payloads/templates")
-async def get_payload_templates(
-    current_user: User = Depends(get_current_user)
-):
+async def get_payload_templates(current_user: User = Depends(get_current_user)):
     """Get available payload templates."""
-    
+
     templates = manual_tester.get_payload_templates()
-    
+
     return {
         "payload_types": list(templates.keys()),
         "templates": templates,
@@ -192,12 +182,12 @@ async def get_payload_templates(
 async def add_custom_template(
     payload_type: str,
     payloads: List[str],
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Add custom payload templates."""
-    
+
     manual_tester.add_custom_template(payload_type, payloads)
-    
+
     return {
         "message": f"Added {len(payloads)} custom payloads for {payload_type}",
         "payload_type": payload_type,
@@ -211,23 +201,24 @@ async def replay_vulnerability_request(
     payload: Optional[str] = None,
     background_tasks: BackgroundTasks = BackgroundTasks(),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Replay a vulnerability request with optional payload modification."""
-    
+
     # Get vulnerability
     from app.models.vulnerability import Vulnerability
-    vulnerability = db.query(Vulnerability).filter(
-        Vulnerability.id == vulnerability_id
-    ).first()
-    
+
+    vulnerability = (
+        db.query(Vulnerability).filter(Vulnerability.id == vulnerability_id).first()
+    )
+
     if not vulnerability:
         raise HTTPException(status_code=404, detail="Vulnerability not found")
-    
+
     # Check if user owns the scan
     if vulnerability.scan.target.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
-    
+
     # Build base request from vulnerability
     base_request = {
         "method": "GET",  # Default, could be extracted from vulnerability
@@ -236,19 +227,16 @@ async def replay_vulnerability_request(
         "body": None,
         "params": {},
     }
-    
+
     # Add payload if provided
     if payload:
         base_request["params"]["test"] = payload
-    
+
     # Queue replay task
     background_tasks.add_task(
-        manual_request_task,
-        current_user.id,
-        base_request,
-        vulnerability_id
+        manual_request_task, current_user.id, base_request, vulnerability_id
     )
-    
+
     return {
         "message": "Vulnerability replay task queued",
         "vulnerability_id": vulnerability_id,
@@ -260,10 +248,10 @@ async def replay_vulnerability_request(
 async def get_testing_history(
     limit: int = 50,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Get manual testing history for the user."""
-    
+
     rows = (
         db.query(ManualTestLog)
         .filter(ManualTestLog.user_id == current_user.id)
@@ -295,28 +283,39 @@ async def get_testing_history(
 async def compare_responses(
     request1: CustomRequest,
     request2: CustomRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Send two requests and compare their responses."""
-    
+
     # Send both requests
     result1 = await manual_tester.send_custom_request(**request1.dict())
     result2 = await manual_tester.send_custom_request(**request2.dict())
-    
+
     # Compare responses
     comparison = {
-        "status_codes_different": result1.get("status_code") != result2.get("status_code"),
-        "response_time_diff_ms": abs(result1.get("response_time_ms", 0) - result2.get("response_time_ms", 0)),
-        "response_size_diff": abs(result1.get("response_size", 0) - result2.get("response_size", 0)),
-        "headers_different": result1.get("response_headers", {}) != result2.get("response_headers", {}),
+        "status_codes_different": result1.get("status_code")
+        != result2.get("status_code"),
+        "response_time_diff_ms": abs(
+            result1.get("response_time_ms", 0) - result2.get("response_time_ms", 0)
+        ),
+        "response_size_diff": abs(
+            result1.get("response_size", 0) - result2.get("response_size", 0)
+        ),
+        "headers_different": result1.get("response_headers", {})
+        != result2.get("response_headers", {}),
     }
-    
+
     # Check for body differences
     body1 = result1.get("response_body", "")
     body2 = result2.get("response_body", "")
     comparison["body_different"] = body1 != body2
-    comparison["body_similarity"] = len(set(body1.split()) & set(body2.split())) / max(len(set(body1.split())), len(set(body2.split()))) if body1 and body2 else 0
-    
+    comparison["body_similarity"] = (
+        len(set(body1.split()) & set(body2.split()))
+        / max(len(set(body1.split())), len(set(body2.split())))
+        if body1 and body2
+        else 0
+    )
+
     return {
         "request1": {
             "method": request1.method,

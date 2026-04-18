@@ -68,7 +68,10 @@ def create_user(
         action="admin_user_created",
         user_id=admin.id,
         ip_address=request.client.host if request.client else None,
-        metadata_json={"created_user_email": payload.email, "created_user_role": payload.role},
+        metadata_json={
+            "created_user_email": payload.email,
+            "created_user_role": payload.role,
+        },
     )
 
     return user
@@ -193,9 +196,17 @@ def system_health(admin: User = Depends(require_admin), db: Session = Depends(ge
         health["celery_worker"] = "unhealthy"
 
     # Overall status
-    if all(v != "unhealthy" for k, v in health.items() if k != "status" and k != "timestamp"):
+    if all(
+        v != "unhealthy"
+        for k, v in health.items()
+        if k != "status" and k != "timestamp"
+    ):
         health["status"] = "healthy"
-    elif any(v == "unhealthy" for k, v in health.items() if k != "status" and k != "timestamp"):
+    elif any(
+        v == "unhealthy"
+        for k, v in health.items()
+        if k != "status" and k != "timestamp"
+    ):
         health["status"] = "degraded"
 
     return health
@@ -298,16 +309,28 @@ def update_configuration(
     changes = {}
 
     # Standard fields
-    for field in ["cors_allowed_origins", "scan_throttle_seconds", "nuclei_templates", 
-                  "takeover_cname_indicators", "scan_nuclei_target_cap", "scan_header_probe_cap"]:
+    for field in [
+        "cors_allowed_origins",
+        "scan_throttle_seconds",
+        "nuclei_templates",
+        "takeover_cname_indicators",
+        "scan_nuclei_target_cap",
+        "scan_header_probe_cap",
+    ]:
         val = getattr(payload, field)
         if val is not None:
             changes[field] = getattr(settings, field)
             setattr(settings, field, val)
-            
+
     # AI Config fields
-    for field in ["ai_scan_provider", "ai_scan_model", "ai_analyze_provider", 
-                  "ai_analyze_model", "ai_report_provider", "ai_report_model"]:
+    for field in [
+        "ai_scan_provider",
+        "ai_scan_model",
+        "ai_analyze_provider",
+        "ai_analyze_model",
+        "ai_report_provider",
+        "ai_report_model",
+    ]:
         val = getattr(payload, field)
         if val is not None:
             changes[field] = getattr(settings, field)

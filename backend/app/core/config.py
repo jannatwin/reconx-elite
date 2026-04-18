@@ -21,7 +21,10 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg2://reconx:reconx@postgres:5432/reconx"
     redis_url: str = "redis://redis:6379/0"
 
-    jwt_secret_key: str = Field(default="change-me-in-production", description="JWT secret key (must change in production)")
+    jwt_secret_key: str = Field(
+        default="change-me-in-production",
+        description="JWT secret key (must change in production)",
+    )
     jwt_algorithm: str = Field(default="HS256", description="JWT algorithm")
     access_token_expire_minutes: int = 120
     refresh_token_expire_minutes: int = 10080
@@ -81,24 +84,33 @@ class Settings(BaseSettings):
     # Task-specific AI settings
     ai_scan_provider: str = "gemini"  # Low-cost, high-speed (Gemini Flash)
     ai_scan_model: str = "gemini-1.5-flash"
-    
-    ai_analyze_provider: str = "gemini"  # Balanced reasoning (GPT-4o mini, Llama 3.1 70B)
-    ai_analyze_model: str = "gemini-1.5-flash" # Default to flash if not set
-    
-    ai_report_provider: str = "gemini"  # High reasoning, expert writing (GPT-4o, Gemini Pro, Claude 3.5 Sonnet)
+
+    ai_analyze_provider: str = (
+        "gemini"  # Balanced reasoning (GPT-4o mini, Llama 3.1 70B)
+    )
+    ai_analyze_model: str = "gemini-1.5-flash"  # Default to flash if not set
+
+    ai_report_provider: str = (
+        "gemini"  # High reasoning, expert writing (GPT-4o, Gemini Pro, Claude 3.5 Sonnet)
+    )
     ai_report_model: str = "gemini-1.5-pro"
-    
+
     # Notification webhooks
     slack_webhook_url: str = ""
     discord_webhook_url: str = ""
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
-    
+
     # Gemini API resilience and AI input sizing
     gemini_max_retries: int = 3
     gemini_retry_base_seconds: float = 15.0
     gemini_retry_max_sleep_seconds: float = 90.0
-    ai_max_input_chars: int = Field(default=12000, ge=100, le=100000, description="Max input chars for AI (clamped to 100KB hard limit)")
+    ai_max_input_chars: int = Field(
+        default=12000,
+        ge=100,
+        le=100000,
+        description="Max input chars for AI (clamped to 100KB hard limit)",
+    )
     callback_url: str = "http://localhost:8000"
 
     # Advanced Reconnaissance Settings
@@ -145,10 +157,16 @@ class Settings(BaseSettings):
     interactsh_server_url: str = ""
 
     # Database connection pool tuning
-    db_pool_size: int = Field(default=20, ge=5, le=100, description="Database connection pool size")
-    db_max_overflow: int = Field(default=30, ge=5, le=50, description="Database connection pool overflow")
+    db_pool_size: int = Field(
+        default=20, ge=5, le=100, description="Database connection pool size"
+    )
+    db_max_overflow: int = Field(
+        default=30, ge=5, le=50, description="Database connection pool overflow"
+    )
     db_pool_recycle: int = 3600
-    db_pool_timeout: int = Field(default=30, ge=5, le=300, description="Database connection pool timeout")
+    db_pool_timeout: int = Field(
+        default=30, ge=5, le=300, description="Database connection pool timeout"
+    )
 
     # HTTPS / proxy
     https_behind_proxy: bool = False
@@ -163,13 +181,17 @@ class Settings(BaseSettings):
     # Metrics
     metrics_enabled: bool = True
 
-    @field_validator('jwt_secret_key')
+    @field_validator("jwt_secret_key")
     @classmethod
     def validate_jwt_secret(cls, v: str) -> str:
         """Validate JWT secret key has been changed and is sufficiently long."""
         if v == "change-me-in-production":
             import warnings
-            warnings.warn("JWT_SECRET_KEY is using default value. MUST be changed in production!", RuntimeWarning)
+
+            warnings.warn(
+                "JWT_SECRET_KEY is using default value. MUST be changed in production!",
+                RuntimeWarning,
+            )
             return v
         if len(v) < 32:
             raise ValueError("JWT_SECRET_KEY must be at least 32 characters long")
@@ -177,15 +199,27 @@ class Settings(BaseSettings):
 
     @cached_property
     def cors_allowed_origins_list(self) -> list[str]:
-        return [value.strip() for value in self.cors_allowed_origins.split(",") if value.strip()]
+        return [
+            value.strip()
+            for value in self.cors_allowed_origins.split(",")
+            if value.strip()
+        ]
 
     @cached_property
     def allowed_schemes(self) -> tuple[str, ...]:
-        return tuple(value.strip().lower() for value in self.scan_allowed_schemes.split(",") if value.strip())
+        return tuple(
+            value.strip().lower()
+            for value in self.scan_allowed_schemes.split(",")
+            if value.strip()
+        )
 
     @cached_property
     def takeover_indicators(self) -> tuple[str, ...]:
-        return tuple(value.strip().lower() for value in self.takeover_cname_indicators.split(",") if value.strip())
+        return tuple(
+            value.strip().lower()
+            for value in self.takeover_cname_indicators.split(",")
+            if value.strip()
+        )
 
     @property
     def openrouter_api_key(self) -> str:

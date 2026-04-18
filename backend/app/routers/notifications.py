@@ -35,10 +35,11 @@ def mark_read(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    notification = db.query(Notification).filter(
-        Notification.id == notification_id,
-        Notification.user_id == user.id
-    ).first()
+    notification = (
+        db.query(Notification)
+        .filter(Notification.id == notification_id, Notification.user_id == user.id)
+        .first()
+    )
     if not notification:
         raise HTTPException(status_code=404, detail="Notification not found")
 

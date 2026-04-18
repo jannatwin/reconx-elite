@@ -8,7 +8,9 @@ class AttackPath(Base):
     __tablename__ = "attack_paths"
 
     id = Column(Integer, primary_key=True, index=True)
-    scan_id = Column(Integer, ForeignKey("scans.id", ondelete="CASCADE"), nullable=False, index=True)
+    scan_id = Column(
+        Integer, ForeignKey("scans.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     title = Column(String(255), nullable=False)
     summary = Column(Text, nullable=False)
     severity = Column(String(32), default="medium", nullable=False, index=True)

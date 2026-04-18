@@ -82,7 +82,7 @@ class ConfigurationResponse(BaseModel):
     js_fetch_max_assets: int
     access_token_expire_minutes: int
     refresh_token_expire_minutes: int
-    
+
     # AI Config
     ai_scan_provider: str
     ai_scan_model: str
@@ -90,7 +90,7 @@ class ConfigurationResponse(BaseModel):
     ai_analyze_model: str
     ai_report_provider: str
     ai_report_model: str
-    
+
     # Notification Config
     slack_webhook_url: str
     discord_webhook_url: str
@@ -105,7 +105,7 @@ class UpdateConfigurationRequest(BaseModel):
     takeover_cname_indicators: Optional[str] = None
     scan_nuclei_target_cap: Optional[int] = Field(None, ge=1)
     scan_header_probe_cap: Optional[int] = Field(None, ge=1)
-    
+
     # AI Config
     ai_scan_provider: Optional[str] = None
     ai_scan_model: Optional[str] = None
@@ -113,7 +113,7 @@ class UpdateConfigurationRequest(BaseModel):
     ai_analyze_model: Optional[str] = None
     ai_report_provider: Optional[str] = None
     ai_report_model: Optional[str] = None
-    
+
     # Notification Config
     slack_webhook_url: Optional[str] = None
     discord_webhook_url: Optional[str] = None

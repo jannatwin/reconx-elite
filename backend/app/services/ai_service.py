@@ -46,7 +46,9 @@ TASK_ROLE_MAP = {
 }
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-_RATE_LIMIT_EVENTS: deque[float] = deque(maxlen=100000)  # FIX #3: Bounded deque to prevent memory leak
+_RATE_LIMIT_EVENTS: deque[float] = deque(
+    maxlen=100000
+)  # FIX #3: Bounded deque to prevent memory leak
 _MODEL_STATUS_CACHE: dict[str, Any] = {"updated_at": None, "results": {}}
 
 ORCHESTRATOR_SYSTEM_PROMPT = """
@@ -169,7 +171,9 @@ class GeminiProvider(AIProvider):
         if usage_metadata:
             usage = {
                 "prompt_tokens": getattr(usage_metadata, "prompt_token_count", None),
-                "completion_tokens": getattr(usage_metadata, "candidates_token_count", None),
+                "completion_tokens": getattr(
+                    usage_metadata, "candidates_token_count", None
+                ),
                 "total_tokens": getattr(usage_metadata, "total_token_count", None),
             }
         return {"output": response.text or "", "usage": usage}
@@ -179,7 +183,9 @@ class OpenRouterProvider(AIProvider):
     def __init__(self, api_key: str):
         self.api_key = api_key
         if not api_key:
-            logger.warning("OPENROUTER_KEY not configured - OpenRouter features disabled")
+            logger.warning(
+                "OPENROUTER_KEY not configured - OpenRouter features disabled"
+            )
 
     async def generate_content_async(
         self,
@@ -276,10 +282,20 @@ def _get_model(task: str = "scan", role: str | None = None) -> AIProvider:
 
 def _is_ai_enabled(task: str = "scan") -> bool:
     if task == "report":
-        return bool(settings.openrouter_key or settings.gemini_api_key or settings.ai_report_model)
+        return bool(
+            settings.openrouter_key
+            or settings.gemini_api_key
+            or settings.ai_report_model
+        )
     if task == "analyze":
-        return bool(settings.openrouter_key or settings.gemini_api_key or settings.ai_analyze_model)
-    return bool(settings.openrouter_key or settings.gemini_api_key or settings.ai_scan_model)
+        return bool(
+            settings.openrouter_key
+            or settings.gemini_api_key
+            or settings.ai_analyze_model
+        )
+    return bool(
+        settings.openrouter_key or settings.gemini_api_key or settings.ai_scan_model
+    )
 
 
 def get_ai_provider(role: str = "orchestrator") -> AIProvider:
@@ -405,7 +421,9 @@ def _normalize_template_list(values: Any) -> list[str]:
     return list(dict.fromkeys(out))
 
 
-def _merge_high_value_targets_by_url(targets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _merge_high_value_targets_by_url(
+    targets: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
     merged: dict[str, dict[str, Any]] = {}
     for target in targets:
         url = str(target.get("url") or "").strip()
@@ -416,7 +434,8 @@ def _merge_high_value_targets_by_url(targets: list[dict[str, Any]]) -> list[dict
             "url": url,
             "reason": str(target.get("reason") or "").strip() or "High-value target",
             "priority": priority,
-            "classification": str(target.get("classification") or "").strip() or "target",
+            "classification": str(target.get("classification") or "").strip()
+            or "target",
             "source": str(target.get("source") or "").strip() or "ai",
         }
         existing = merged.get(url)
@@ -466,7 +485,9 @@ def _validate_ai_scan_response(raw: Any) -> dict[str, Any]:
         "batches_processed",
     }
     cleaned = {key: raw[key] for key in allowed if key in raw}
-    high_value_targets = [item for item in cleaned.get("high_value_targets", []) if isinstance(item, dict)]
+    high_value_targets = [
+        item for item in cleaned.get("high_value_targets", []) if isinstance(item, dict)
+    ]
     cleaned["high_value_targets"] = _merge_high_value_targets_by_url(high_value_targets)
     cleaned["potential_leaks"] = _merge_potential_leaks(
         [item for item in cleaned.get("potential_leaks", []) if isinstance(item, dict)]
@@ -480,15 +501,21 @@ def _validate_ai_scan_response(raw: Any) -> dict[str, Any]:
         for item in cleaned.get("juicy_js_files", [])
         if isinstance(item, dict) and str(item.get("url") or "").strip()
     ]
-    cleaned["suggested_nuclei_templates"] = _normalize_template_list(cleaned.get("suggested_nuclei_templates", []))
-    cleaned["security_flags"] = _normalize_template_list(cleaned.get("security_flags", []))
+    cleaned["suggested_nuclei_templates"] = _normalize_template_list(
+        cleaned.get("suggested_nuclei_templates", [])
+    )
+    cleaned["security_flags"] = _normalize_template_list(
+        cleaned.get("security_flags", [])
+    )
     cleaned["confidence_score"] = str(cleaned.get("confidence_score") or "low").lower()
     cleaned["total_processed"] = int(cleaned.get("total_processed") or 0)
     cleaned["batches_processed"] = int(cleaned.get("batches_processed") or 0)
     return cleaned
 
 
-def build_javascript_asset_summaries_for_ai(asset_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def build_javascript_asset_summaries_for_ai(
+    asset_rows: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
     summaries: list[dict[str, Any]] = []
     for row in asset_rows:
         url = str(row.get("url") or "").strip()
@@ -514,13 +541,19 @@ def build_javascript_asset_summaries_for_ai(asset_rows: list[dict[str, Any]]) ->
 
 def _triage_host(host: str) -> tuple[str, str]:
     lowered = host.lower()
-    if any(token in lowered for token in ("auth", "login", "signin", "sso", "oauth", "account")):
+    if any(
+        token in lowered
+        for token in ("auth", "login", "signin", "sso", "oauth", "account")
+    ):
         return "auth_target", "Authentication-related host"
     if any(token in lowered for token in ("api", "graphql", "rest")):
         return "api_target", "API-related host"
     if any(token in lowered for token in ("admin", "manage", "console", "portal")):
         return "admin_target", "Administrative host"
-    if any(token in lowered for token in ("dev", "test", "stage", "staging", "sandbox", "qa")):
+    if any(
+        token in lowered
+        for token in ("dev", "test", "stage", "staging", "sandbox", "qa")
+    ):
         return "dev_target", "Development or staging host"
     return "skip", "No elevated signal"
 
@@ -529,7 +562,9 @@ def triage_hosts(hosts: list[str]) -> list[dict[str, Any]]:
     triaged: list[dict[str, Any]] = []
     for host in hosts:
         classification, reason = _triage_host(host)
-        triaged.append({"host": host, "classification": classification, "reason": reason})
+        triaged.append(
+            {"host": host, "classification": classification, "reason": reason}
+        )
     return triaged
 
 
@@ -556,7 +591,9 @@ def _ai_scan_fallback(hosts: list[str], source: str) -> dict[str, Any]:
             )
         lowered = item["host"].lower()
         if any(token in lowered for token in ("internal", "debug", "staging", "dev")):
-            potential_leaks.append({"type": "host", "detail": item["host"], "severity": "medium"})
+            potential_leaks.append(
+                {"type": "host", "detail": item["host"], "severity": "medium"}
+            )
         if "api" in lowered:
             suggested_templates.append("misconfiguration/http/cors-misconfig.yaml")
         if "admin" in lowered:
@@ -579,7 +616,9 @@ async def analyze_subdomains(hosts: list[str]) -> dict[str, Any]:
         return fallback
     prompt = json.dumps({"hosts": hosts, "task": "subdomain_triage"})
     try:
-        output = await _get_model_response(prompt, task="triage", role="fast_classifier")
+        output = await _get_model_response(
+            prompt, task="triage", role="fast_classifier"
+        )
         parsed = _parse_json_payload(output)
         if isinstance(parsed, list):
             fallback["high_value_targets"] = _merge_high_value_targets_by_url(
@@ -631,7 +670,11 @@ async def analyze_javascript_endpoints(
                     }
                 )
     fallback = _validate_ai_scan_response(fallback)
-    if not (js_urls or endpoint_urls) or not _is_ai_enabled("scan") or not _check_rate_limit():
+    if (
+        not (js_urls or endpoint_urls)
+        or not _is_ai_enabled("scan")
+        or not _check_rate_limit()
+    ):
         return fallback
     prompt = json.dumps(
         {
@@ -645,7 +688,9 @@ async def analyze_javascript_endpoints(
         output = await _get_model_response(prompt, task="js", role="js_reader")
         return _validate_ai_scan_response(_parse_json_payload(output))
     except Exception:
-        logger.warning("Falling back to local JavaScript endpoint analysis", exc_info=True)
+        logger.warning(
+            "Falling back to local JavaScript endpoint analysis", exc_info=True
+        )
         return fallback
 
 
@@ -668,7 +713,9 @@ async def analyze_nuclei_findings(nuclei_output: str) -> dict[str, Any]:
                 }
             )
         if "token" in stripped.lower() or "secret" in stripped.lower():
-            potential_leaks.append({"type": "nuclei", "detail": stripped, "severity": "high"})
+            potential_leaks.append(
+                {"type": "nuclei", "detail": stripped, "severity": "high"}
+            )
     fallback = _validate_ai_scan_response(
         {
             "high_value_targets": high_value_targets,
@@ -681,7 +728,12 @@ async def analyze_nuclei_findings(nuclei_output: str) -> dict[str, Any]:
     )
     if not nuclei_output or not _is_ai_enabled("analyze") or not _check_rate_limit():
         return fallback
-    prompt = json.dumps({"task": "nuclei_findings", "raw_output": nuclei_output[: settings.ai_max_input_chars]})
+    prompt = json.dumps(
+        {
+            "task": "nuclei_findings",
+            "raw_output": nuclei_output[: settings.ai_max_input_chars],
+        }
+    )
     try:
         output = await _get_model_response(prompt, task="chain", role="chain_reasoner")
         return _validate_ai_scan_response(_parse_json_payload(output))
@@ -690,7 +742,9 @@ async def analyze_nuclei_findings(nuclei_output: str) -> dict[str, Any]:
         return fallback
 
 
-async def analyze_scan_data(scan_id: str, target: str, task: str = "scan") -> dict[str, Any]:
+async def analyze_scan_data(
+    scan_id: str, target: str, task: str = "scan"
+) -> dict[str, Any]:
     summary = {
         "scan_id": scan_id,
         "target": target,
@@ -713,7 +767,9 @@ async def analyze_scan_data(scan_id: str, target: str, task: str = "scan") -> di
     return summary
 
 
-def _fallback_cvss(vulnerability_type: str, severity: str | None = None) -> dict[str, Any]:
+def _fallback_cvss(
+    vulnerability_type: str, severity: str | None = None
+) -> dict[str, Any]:
     normalized = (severity or vulnerability_type or "medium").lower()
     mapping = {
         "critical": (9.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"),
@@ -726,8 +782,14 @@ def _fallback_cvss(vulnerability_type: str, severity: str | None = None) -> dict
         "ssrf": (8.6, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:L/A:L"),
         "takeover": (8.8, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:N"),
     }
-    score, vector = mapping.get(normalized, mapping.get(vulnerability_type.lower(), mapping["medium"]))
-    label = "Critical" if score >= 9 else "High" if score >= 7 else "Medium" if score >= 4 else "Low"
+    score, vector = mapping.get(
+        normalized, mapping.get(vulnerability_type.lower(), mapping["medium"])
+    )
+    label = (
+        "Critical"
+        if score >= 9
+        else "High" if score >= 7 else "Medium" if score >= 4 else "Low"
+    )
     return {
         "score": score,
         "vector": vector,
@@ -737,12 +799,16 @@ def _fallback_cvss(vulnerability_type: str, severity: str | None = None) -> dict
 
 
 def rate_finding_severity(finding: dict[str, Any]) -> dict[str, Any]:
-    vulnerability_type = str(finding.get("type") or finding.get("template_id") or "finding")
+    vulnerability_type = str(
+        finding.get("type") or finding.get("template_id") or "finding"
+    )
     severity = finding.get("severity")
     return _fallback_cvss(vulnerability_type, severity)
 
 
-async def generate_payloads(vuln_type: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
+async def generate_payloads(
+    vuln_type: str, context: dict[str, Any] | None = None
+) -> dict[str, Any]:
     from app.services.payload_generator import PayloadGenerator
 
     payloads = PayloadGenerator.get_payloads_for_type(vuln_type)
@@ -757,19 +823,36 @@ async def generate_payloads(vuln_type: str, context: dict[str, Any] | None = Non
     result = {"vuln_type": vuln_type, "payloads": enriched, "context": context or {}}
     if vuln_type.lower() in ("sqli", "sql_injection"):
         base = context.get("endpoint") if isinstance(context, dict) else None
-        result["sqlmap_command"] = f"sqlmap -u \"{base or 'https://target.example/path?id=1'}\" --batch"
+        result["sqlmap_command"] = (
+            f"sqlmap -u \"{base or 'https://target.example/path?id=1'}\" --batch"
+        )
     return result
 
 
-async def analyze_js_content(js_content: str, source_url: str | None = None) -> dict[str, Any]:
-    from app.services.intelligence import extract_endpoints_from_javascript, extract_secret_like_strings
+async def analyze_js_content(
+    js_content: str, source_url: str | None = None
+) -> dict[str, Any]:
+    from app.services.intelligence import (
+        extract_endpoints_from_javascript,
+        extract_secret_like_strings,
+    )
 
     hostname = urlparse(source_url).hostname if source_url else None
     scope = {hostname} if hostname else set()
-    endpoints = extract_endpoints_from_javascript(js_content or "", source_url or "https://example.invalid/app.js", scope)
+    endpoints = extract_endpoints_from_javascript(
+        js_content or "", source_url or "https://example.invalid/app.js", scope
+    )
     secrets = extract_secret_like_strings(js_content or "")
-    internal_urls = [endpoint for endpoint in endpoints if hostname and hostname in endpoint]
-    auth_logic = bool(re.search(r"\b(auth|login|token|jwt|session|oauth|mfa)\b", js_content or "", re.IGNORECASE))
+    internal_urls = [
+        endpoint for endpoint in endpoints if hostname and hostname in endpoint
+    ]
+    auth_logic = bool(
+        re.search(
+            r"\b(auth|login|token|jwt|session|oauth|mfa)\b",
+            js_content or "",
+            re.IGNORECASE,
+        )
+    )
     return {
         "source_url": source_url,
         "endpoints_found": endpoints,
@@ -783,7 +866,12 @@ async def analyze_js_content(js_content: str, source_url: str | None = None) -> 
 def analyze_finding_chains(findings: list[dict[str, Any]]) -> dict[str, Any]:
     by_endpoint: dict[str, list[dict[str, Any]]] = {}
     for finding in findings:
-        endpoint = str(finding.get("endpoint") or finding.get("matched_url") or finding.get("host") or "").strip()
+        endpoint = str(
+            finding.get("endpoint")
+            or finding.get("matched_url")
+            or finding.get("host")
+            or ""
+        ).strip()
         if not endpoint:
             continue
         by_endpoint.setdefault(endpoint, []).append(finding)
@@ -793,7 +881,11 @@ def analyze_finding_chains(findings: list[dict[str, Any]]) -> dict[str, Any]:
         if len(grouped) < 2:
             continue
         severities = [str(item.get("severity") or "medium").lower() for item in grouped]
-        combined = "Critical" if "critical" in severities else "High" if "high" in severities else "Medium"
+        combined = (
+            "Critical"
+            if "critical" in severities
+            else "High" if "high" in severities else "Medium"
+        )
         chains.append(
             {
                 "endpoint": endpoint,
@@ -816,13 +908,27 @@ def estimate_bounty_potential(severity: str) -> str:
 
 
 def _should_generate_report(severity: str, existing_reports: int) -> bool:
-    return _is_ai_enabled("report") and (severity or "").lower() in {"high", "critical"} and existing_reports < 10
+    return (
+        _is_ai_enabled("report")
+        and (severity or "").lower() in {"high", "critical"}
+        and existing_reports < 10
+    )
 
 
 def _fallback_report(vulnerability: dict[str, Any], severity: str) -> dict[str, Any]:
-    cvss = _fallback_cvss(str(vulnerability.get("type") or vulnerability.get("template_id") or "finding"), severity)
-    endpoint = vulnerability.get("matched_url") or vulnerability.get("endpoint") or vulnerability.get("host") or "N/A"
-    vuln_type = vulnerability.get("type") or vulnerability.get("template_id") or "Finding"
+    cvss = _fallback_cvss(
+        str(vulnerability.get("type") or vulnerability.get("template_id") or "finding"),
+        severity,
+    )
+    endpoint = (
+        vulnerability.get("matched_url")
+        or vulnerability.get("endpoint")
+        or vulnerability.get("host")
+        or "N/A"
+    )
+    vuln_type = (
+        vulnerability.get("type") or vulnerability.get("template_id") or "Finding"
+    )
     return {
         "title": f"{vuln_type} on {endpoint}",
         "summary": f"{vuln_type} was identified on {endpoint}.",
@@ -831,19 +937,31 @@ def _fallback_report(vulnerability: dict[str, Any], severity: str) -> dict[str, 
         "cwe_mapping": "[]",
         "owasp_mapping": "[]",
         "cvss_score": str(cvss["score"]),
-        "technical_details": vulnerability.get("description") or "Manual validation recommended.",
-        "proof_of_concept": "\n".join(vulnerability.get("reproduction_steps") or []) or "Review raw request and replay safely.",
+        "technical_details": vulnerability.get("description")
+        or "Manual validation recommended.",
+        "proof_of_concept": "\n".join(vulnerability.get("reproduction_steps") or [])
+        or "Review raw request and replay safely.",
         "exploit_draft": vulnerability.get("payload_used") or "",
-        "business_impact": vulnerability.get("impact") or "Potential unauthorized access or data exposure.",
+        "business_impact": vulnerability.get("impact")
+        or "Potential unauthorized access or data exposure.",
         "bounty_estimate": estimate_bounty_potential(severity),
-        "remediation_steps": vulnerability.get("remediation") or "Validate authorization, input handling, and exposure controls.",
-        "ai_model_version": MODEL_MAP["deep_analyst"] if severity.lower() in {"high", "critical"} else MODEL_MAP["fast_analyst"],
+        "remediation_steps": vulnerability.get("remediation")
+        or "Validate authorization, input handling, and exposure controls.",
+        "ai_model_version": (
+            MODEL_MAP["deep_analyst"]
+            if severity.lower() in {"high", "critical"}
+            else MODEL_MAP["fast_analyst"]
+        ),
         "processing_time_ms": 0,
-        "data_sent_hash": hashlib.sha256(json.dumps(vulnerability, sort_keys=True, default=str).encode("utf-8")).hexdigest(),
+        "data_sent_hash": hashlib.sha256(
+            json.dumps(vulnerability, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest(),
     }
 
 
-async def generate_elite_vulnerability_report(vulnerability: dict[str, Any]) -> dict[str, Any]:
+async def generate_elite_vulnerability_report(
+    vulnerability: dict[str, Any]
+) -> dict[str, Any]:
     severity = str(vulnerability.get("severity") or "medium").lower()
     fallback = _fallback_report(vulnerability, severity)
     if not _is_ai_enabled("report") or not _check_rate_limit():
@@ -863,15 +981,23 @@ async def generate_elite_vulnerability_report(vulnerability: dict[str, Any]) -> 
         if isinstance(parsed, dict):
             merged = fallback | parsed
             merged["data_sent_hash"] = fallback["data_sent_hash"]
-            merged["processing_time_ms"] = int(parsed.get("processing_time_ms") or fallback["processing_time_ms"])
-            merged["bounty_estimate"] = merged.get("bounty_estimate") or fallback["bounty_estimate"]
+            merged["processing_time_ms"] = int(
+                parsed.get("processing_time_ms") or fallback["processing_time_ms"]
+            )
+            merged["bounty_estimate"] = (
+                merged.get("bounty_estimate") or fallback["bounty_estimate"]
+            )
             return merged
     except Exception:
-        logger.warning("Falling back to local vulnerability report generation", exc_info=True)
+        logger.warning(
+            "Falling back to local vulnerability report generation", exc_info=True
+        )
     return fallback
 
 
-async def write_finding_report(finding: dict[str, Any], severity: str | None = None) -> dict[str, Any]:
+async def write_finding_report(
+    finding: dict[str, Any], severity: str | None = None
+) -> dict[str, Any]:
     payload = dict(finding)
     if severity:
         payload["severity"] = severity.lower()
@@ -883,7 +1009,11 @@ async def generate_exploit_draft(vulnerability: dict[str, Any]) -> dict[str, Any
     report = await generate_elite_vulnerability_report(vulnerability)
     if "error" in report:
         return {"error": report["error"]}
-    return {"exploit_draft": report.get("exploit_draft") or report.get("proof_of_concept") or ""}
+    return {
+        "exploit_draft": report.get("exploit_draft")
+        or report.get("proof_of_concept")
+        or ""
+    }
 
 
 def get_model_status_snapshot() -> dict[str, Any]:

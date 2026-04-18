@@ -8,7 +8,9 @@ class ScanArtifact(Base):
     __tablename__ = "scan_artifacts"
 
     id = Column(Integer, primary_key=True, index=True)
-    scan_id = Column(Integer, ForeignKey("scans.id", ondelete="CASCADE"), nullable=False, index=True)
+    scan_id = Column(
+        Integer, ForeignKey("scans.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     module = Column(String(64), nullable=False)
     tool = Column(String(64), nullable=False)
     format_ = Column("format", String(32), nullable=False, default="text")

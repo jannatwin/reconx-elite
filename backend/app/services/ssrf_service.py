@@ -17,7 +17,9 @@ class SsrfService:
         return secrets.token_hex(32)
 
     @staticmethod
-    def create_token_for_opportunity(db: Session, user_id: int, opportunity_id: Optional[int] = None) -> str:
+    def create_token_for_opportunity(
+        db: Session, user_id: int, opportunity_id: Optional[int] = None
+    ) -> str:
         """Create a new SSRF token for a user and opportunity."""
         token = SsrfService.generate_unique_token()
 
@@ -76,7 +78,9 @@ class SsrfService:
         return True
 
     @staticmethod
-    def create_payload_with_token(payload_template: str, token: str, domain: str) -> str:
+    def create_payload_with_token(
+        payload_template: str, token: str, domain: str
+    ) -> str:
         """Replace placeholders in payload template with actual token and domain."""
         payload = payload_template.replace("__TOKEN__", token)
         payload = payload.replace("yourdomain.com", domain)

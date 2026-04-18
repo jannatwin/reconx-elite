@@ -79,14 +79,18 @@ class PayloadTester:
 
             # Check status code anomalies
             if test_status != baseline_status:
-                findings.append(f"Status code changed: {baseline_status} → {test_status}")
+                findings.append(
+                    f"Status code changed: {baseline_status} → {test_status}"
+                )
                 if test_status in (500, 502, 503):
                     confidence += 20
                     findings.append("Server error status detected")
 
             # Check response size anomaly
             if abs(test_length - baseline_length) > baseline_length * 0.5:
-                findings.append(f"Response size changed: {baseline_length} → {test_length}")
+                findings.append(
+                    f"Response size changed: {baseline_length} → {test_length}"
+                )
                 confidence += 15
 
             # Check for common error patterns indicating injection
@@ -122,7 +126,9 @@ class PayloadTester:
         """Get HTTP response with reasonable timeout."""
         try:
             timeout = httpx.Timeout(self.timeout, connect=self.timeout)
-            async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            async with httpx.AsyncClient(
+                timeout=timeout, follow_redirects=True
+            ) as client:
                 resp = await client.get(url, params=params)
                 body = resp.text[: self.max_response_size]
                 return {"status": resp.status_code, "body": body}
@@ -141,7 +147,10 @@ class PayloadTester:
         lines = response.split("\n")
         error_context = []
         for line in lines:
-            if any(keyword in line.lower() for keyword in ["error", "exception", "warning", "syntax"]):
+            if any(
+                keyword in line.lower()
+                for keyword in ["error", "exception", "warning", "syntax"]
+            ):
                 error_context.append(line.strip())
         return " | ".join(error_context[:3]) if error_context else ""
 
@@ -172,72 +181,130 @@ class OpportunityDetector:
 
             # Detect XSS opportunities
             xss_indicators = [
-                "search", "q", "query", "content", "text", "name", "message",
-                "title", "description", "comment", "email", "username", "input",
+                "search",
+                "q",
+                "query",
+                "content",
+                "text",
+                "name",
+                "message",
+                "title",
+                "description",
+                "comment",
+                "email",
+                "username",
+                "input",
             ]
             if any(indicator in param_lower for indicator in xss_indicators):
-                opportunities.append({
-                    "parameter_name": param,
-                    "parameter_location": "query",
-                    "vulnerability_types": ["xss", "blind_xss"],
-                    "confidence": 70,
-                    "reason": "Text input parameter likely reflects user data",
-                })
+                opportunities.append(
+                    {
+                        "parameter_name": param,
+                        "parameter_location": "query",
+                        "vulnerability_types": ["xss", "blind_xss"],
+                        "confidence": 70,
+                        "reason": "Text input parameter likely reflects user data",
+                    }
+                )
 
             # Detect SQLi opportunities
             sqli_indicators = [
-                "id", "user_id", "page", "sort", "filter", "search", "q",
-                "db", "table", "where", "select",
+                "id",
+                "user_id",
+                "page",
+                "sort",
+                "filter",
+                "search",
+                "q",
+                "db",
+                "table",
+                "where",
+                "select",
             ]
             if any(indicator in param_lower for indicator in sqli_indicators):
-                opportunities.append({
-                    "parameter_name": param,
-                    "parameter_location": "query",
-                    "vulnerability_types": ["sqli"],
-                    "confidence": 65,
-                    "reason": "Parameter used in potential database query",
-                })
+                opportunities.append(
+                    {
+                        "parameter_name": param,
+                        "parameter_location": "query",
+                        "vulnerability_types": ["sqli"],
+                        "confidence": 65,
+                        "reason": "Parameter used in potential database query",
+                    }
+                )
 
             # Detect SSTI opportunities
             ssti_indicators = [
-                "template", "render", "theme", "style", "format", "lang", "language",
+                "template",
+                "render",
+                "theme",
+                "style",
+                "format",
+                "lang",
+                "language",
             ]
             if any(indicator in param_lower for indicator in ssti_indicators):
-                opportunities.append({
-                    "parameter_name": param,
-                    "parameter_location": "query",
-                    "vulnerability_types": ["ssti"],
-                    "confidence": 55,
-                    "reason": "Parameter may control template rendering",
-                })
+                opportunities.append(
+                    {
+                        "parameter_name": param,
+                        "parameter_location": "query",
+                        "vulnerability_types": ["ssti"],
+                        "confidence": 55,
+                        "reason": "Parameter may control template rendering",
+                    }
+                )
 
             # Detect SSRF opportunities
             ssrf_indicators = [
-                "url", "uri", "link", "redirect", "fetch", "load", "source",
-                "proxy", "endpoint", "host", "server", "next", "dest",
+                "url",
+                "uri",
+                "link",
+                "redirect",
+                "fetch",
+                "load",
+                "source",
+                "proxy",
+                "endpoint",
+                "host",
+                "server",
+                "next",
+                "dest",
             ]
             if any(indicator in param_lower for indicator in ssrf_indicators):
-                opportunities.append({
-                    "parameter_name": param,
-                    "parameter_location": "query",
-                    "vulnerability_types": ["ssrf"],
-                    "confidence": 60,
-                    "reason": "Parameter accepts URL-like input",
-                })
+                opportunities.append(
+                    {
+                        "parameter_name": param,
+                        "parameter_location": "query",
+                        "vulnerability_types": ["ssrf"],
+                        "confidence": 60,
+                        "reason": "Parameter accepts URL-like input",
+                    }
+                )
 
             # Detect Open Redirect opportunities
             redirect_indicators = [
-                "redirect", "return", "next", "goto", "back", "origin", "referer",
-                "callback", "returnurl", "destination", "url", "uri", "link",
+                "redirect",
+                "return",
+                "next",
+                "goto",
+                "back",
+                "origin",
+                "referer",
+                "callback",
+                "returnurl",
+                "destination",
+                "url",
+                "uri",
+                "link",
             ]
             if any(indicator in param_lower for indicator in redirect_indicators):
-                opportunities.append({
-                    "parameter_name": param,
-                    "parameter_location": "query",
-                    "vulnerability_types": ["openredirect"],
-                    "confidence": 75,
-                    "reason": "Parameter controls redirect destination",
-                })
+                opportunities.append(
+                    {
+                        "parameter_name": param,
+                        "parameter_location": "query",
+                        "vulnerability_types": ["openredirect"],
+                        "confidence": 75,
+                        "reason": "Parameter controls redirect destination",
+                    }
+                )
 
         # Deduplicate by parameter name, keeping highest confidence
         seen = {}

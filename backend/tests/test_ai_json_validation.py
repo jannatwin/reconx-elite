@@ -41,7 +41,11 @@ class ValidateAiScanResponseTests(unittest.TestCase):
             ],
             "potential_leaks": [{"type": "path", "detail": "/internal/debug"}],
             "juicy_js_files": [
-                {"url": "cdn.example.com/app.js", "rationale": "large bundle", "focus_areas": "payments"}
+                {
+                    "url": "cdn.example.com/app.js",
+                    "rationale": "large bundle",
+                    "focus_areas": "payments",
+                }
             ],
             "suggested_nuclei_templates": ["misconfiguration/http/auth-bypass.yaml"],
             "security_flags": ["x"],

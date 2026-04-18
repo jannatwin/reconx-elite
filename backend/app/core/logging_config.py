@@ -11,16 +11,20 @@ import re
 try:
     from pythonjsonlogger import jsonlogger  # type: ignore[import-untyped]
 except ModuleNotFoundError:  # pragma: no cover - local fallback
+
     class _FallbackJsonFormatter(logging.Formatter):
         def __init__(self, *args, **kwargs):  # noqa: D401, ANN002, ANN003
             kwargs.pop("rename_fields", None)
             super().__init__("%(asctime)s %(levelname)s %(name)s %(message)s")
 
-        def add_fields(self, log_record: dict, record: logging.LogRecord, message_dict: dict) -> None:
+        def add_fields(
+            self, log_record: dict, record: logging.LogRecord, message_dict: dict
+        ) -> None:
             log_record.update(message_dict)
 
     class jsonlogger:  # type: ignore[no-redef]
         JsonFormatter = _FallbackJsonFormatter
+
 
 # Patterns that identify sensitive fields in log record extras / messages.
 _SENSITIVE_PATTERNS = [
@@ -37,7 +41,9 @@ _REDACTED = "[REDACTED]"
 def _redact(value: str) -> str:
     """Replace sensitive values in *value* with [REDACTED]."""
     for pattern in _SENSITIVE_PATTERNS:
-        value = pattern.sub(lambda m: m.group(1) + _REDACTED if m.lastindex else _REDACTED, value)
+        value = pattern.sub(
+            lambda m: m.group(1) + _REDACTED if m.lastindex else _REDACTED, value
+        )
     return value
 
 
@@ -69,7 +75,9 @@ class _ReconXJsonFormatter(jsonlogger.JsonFormatter):
     ) -> None:
         super().add_fields(log_record, record, message_dict)
         # Rename to canonical field names expected by the spec
-        log_record["timestamp"] = log_record.pop("asctime", None) or self.formatTime(record)
+        log_record["timestamp"] = log_record.pop("asctime", None) or self.formatTime(
+            record
+        )
         log_record["level"] = log_record.pop("levelname", record.levelname)
         log_record["logger"] = log_record.pop("name", record.name)
         # "message" is already set by the parent

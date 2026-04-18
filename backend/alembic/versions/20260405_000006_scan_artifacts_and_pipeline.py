@@ -27,12 +27,21 @@ def upgrade() -> None:
         sa.Column("summary_json", sa.JSON(), nullable=True),
         sa.Column("text_preview", sa.Text(), nullable=True),
         sa.Column("blob_path", sa.String(length=512), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=True,
+        ),
         sa.ForeignKeyConstraint(["scan_id"], ["scans.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(op.f("ix_scan_artifacts_id"), "scan_artifacts", ["id"], unique=False)
-    op.create_index(op.f("ix_scan_artifacts_scan_id"), "scan_artifacts", ["scan_id"], unique=False)
+    op.create_index(
+        op.f("ix_scan_artifacts_id"), "scan_artifacts", ["id"], unique=False
+    )
+    op.create_index(
+        op.f("ix_scan_artifacts_scan_id"), "scan_artifacts", ["scan_id"], unique=False
+    )
 
 
 def downgrade() -> None:

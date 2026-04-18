@@ -8,7 +8,9 @@ class ScanLog(Base):
     __tablename__ = "scan_logs"
 
     id = Column(Integer, primary_key=True)
-    scan_id = Column(Integer, ForeignKey("scans.id", ondelete="CASCADE"), nullable=False, index=True)
+    scan_id = Column(
+        Integer, ForeignKey("scans.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     step = Column(String(100), nullable=False, index=True)
     status = Column(String(50), nullable=False, index=True)
     started_at = Column(DateTime(timezone=True), nullable=False)

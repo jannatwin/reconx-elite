@@ -73,19 +73,19 @@
   - [x] 15.1 Create `backup/backup.sh`: runs `pg_dump --format=custom`, compresses output, logs filename/size/timestamp on success, exits non-zero on failure, prunes files older than `$BACKUP_RETENTION_DAYS`
   - [x] 15.2 Add a `db-backup` service to `docker-compose.yml` using `postgres:16-alpine`, mounting `./backup/backup.sh` and a backup volume, running on a configurable schedule
 
-- [~] 16. Environment Configuration — `.env.example` and Validation
+- [ ] 16. Environment Configuration — `.env.example` and Validation
   - [ ] 16.1 Update `.env.example` to include all new variables (`DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_RECYCLE`, `DB_POOL_TIMEOUT`, `HTTPS_BEHIND_PROXY`, `REDIS_CACHE_TTL`, `BACKUP_DEST_PATH`, `BACKUP_RETENTION_DAYS`, `METRICS_ENABLED`), grouped by service with descriptive comments
   - [-] 16.2 Add a `scripts/check_env_example.py` script that diffs `Settings` field names against `.env.example` keys and exits non-zero if any are missing
 
-- [~] 17. CI/CD Pipeline
-  - [~] 17.1 Add a `secret-scan` job to `.github/workflows/ci.yml` using `trufflesecurity/trufflehog` that runs before all other jobs
-  - [~] 17.2 Add a `docker-build` job that builds backend, worker, and frontend images using `docker/build-push-action`
-  - [~] 17.3 Add a `cve-scan` job using `aquasecurity/trivy-action` with `exit-code: 1` on `CRITICAL` severity findings
-  - [~] 17.4 Add a `push` job conditional on `github.ref == 'refs/heads/main'` and all prior jobs passing, that pushes tagged images to the configured container registry
-  - [~] 17.5 Add `actions/cache` steps for pip (`~/.cache/pip`) and npm (`~/.npm`) to the backend and frontend jobs
-  - [~] 17.6 Add an `env-check` step to the backend CI job that runs `scripts/check_env_example.py` and fails if any Settings fields are undocumented
+- [ ] 17. CI/CD Pipeline
+  - [ ] 17.1 Add a `secret-scan` job to `.github/workflows/ci.yml` using `trufflesecurity/trufflehog` that runs before all other jobs
+  - [ ] 17.2 Add a `docker-build` job that builds backend, worker, and frontend images using `docker/build-push-action`
+  - [ ] 17.3 Add a `cve-scan` job using `aquasecurity/trivy-action` with `exit-code: 1` on `CRITICAL` severity findings
+  - [ ] 17.4 Add a `push` job conditional on `github.ref == 'refs/heads/main'` and all prior jobs passing, that pushes tagged images to the configured container registry
+  - [ ] 17.5 Add `actions/cache` steps for pip (`~/.cache/pip`) and npm (`~/.npm`) to the backend and frontend jobs
+  - [ ] 17.6 Add an `env-check` step to the backend CI job that runs `scripts/check_env_example.py` and fails if any Settings fields are undocumented
 
-- [~] 18. Property-Based and Unit Tests
-  - [~] 18.1 Add `hypothesis` to `backend/requirements.txt`
-  - [~] 18.2 Create `backend/tests/test_production_readiness.py` with unit tests: `test_jwt_secret_guard`, `test_cors_wildcard_raises`, `test_json_log_fields`, `test_sensitive_field_redaction`, `test_rfc7807_shape`, `test_cache_key_user_scoping`, `test_backup_retention_deletes_old_files`
-  - [~] 18.3 Add property-based tests to `test_production_readiness.py` using `hypothesis` for: JSON log structure invariant (Property 5), sensitive field redaction (Property 6), rate limit 429+Retry-After (Property 7), cache key user-scoping (Property 8), RFC 7807 error shape (Property 11), backup retention (Property 12)
+- [ ] 18. Property-Based and Unit Tests
+  - [ ] 18.1 Add `hypothesis` to `backend/requirements.txt`
+  - [ ] 18.2 Create `backend/tests/test_production_readiness.py` with unit tests: `test_jwt_secret_guard`, `test_cors_wildcard_raises`, `test_json_log_fields`, `test_sensitive_field_redaction`, `test_rfc7807_shape`, `test_cache_key_user_scoping`, `test_backup_retention_deletes_old_files`
+  - [ ] 18.3 Add property-based tests to `test_production_readiness.py` using `hypothesis` for: JSON log structure invariant (Property 5), sensitive field redaction (Property 6), rate limit 429+Retry-After (Property 7), cache key user-scoping (Property 8), RFC 7807 error shape (Property 11), backup retention (Property 12)

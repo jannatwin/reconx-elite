@@ -9,10 +9,13 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+
 class ExternalNotificationService:
     """Service to send notifications to external platforms."""
 
-    async def send_slack_notification(self, webhook_url: str, message: str, title: str = "ReconX Elite Alert"):
+    async def send_slack_notification(
+        self, webhook_url: str, message: str, title: str = "ReconX Elite Alert"
+    ):
         """Send a notification to Slack."""
         if not webhook_url:
             return
@@ -21,19 +24,9 @@ class ExternalNotificationService:
             "blocks": [
                 {
                     "type": "header",
-                    "text": {
-                        "type": "plain_text",
-                        "text": title,
-                        "emoji": True
-                    }
+                    "text": {"type": "plain_text", "text": title, "emoji": True},
                 },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": message
-                    }
-                }
+                {"type": "section", "text": {"type": "mrkdwn", "text": message}},
             ]
         }
 
@@ -44,7 +37,9 @@ class ExternalNotificationService:
         except Exception as e:
             logger.error(f"Failed to send Slack notification: {e}")
 
-    async def send_discord_notification(self, webhook_url: str, message: str, title: str = "ReconX Elite Alert"):
+    async def send_discord_notification(
+        self, webhook_url: str, message: str, title: str = "ReconX Elite Alert"
+    ):
         """Send a notification to Discord."""
         if not webhook_url:
             return
@@ -54,10 +49,10 @@ class ExternalNotificationService:
                 {
                     "title": title,
                     "description": message,
-                    "color": 0x00ff00 if "Success" in title else 0xff0000,
+                    "color": 0x00FF00 if "Success" in title else 0xFF0000,
                     "footer": {
                         "text": "ReconX Elite - Automated Security Intelligence"
-                    }
+                    },
                 }
             ]
         }
@@ -71,12 +66,14 @@ class ExternalNotificationService:
 
     async def notify_critical_finding(self, vulnerability_data: Dict[str, Any]):
         """Send urgent notifications for critical findings."""
-        
+
         severity = vulnerability_data.get("severity", "unknown").upper()
         if severity not in ["HIGH", "CRITICAL"]:
             return
 
-        title = f"🚨 {severity} Finding: {vulnerability_data.get('template_id', 'Unknown')}"
+        title = (
+            f"🚨 {severity} Finding: {vulnerability_data.get('template_id', 'Unknown')}"
+        )
         message = (
             f"*Target*: {vulnerability_data.get('matched_url', 'N/A')}\n"
             f"*Description*: {vulnerability_data.get('description', 'No description provided')}\n"
@@ -90,8 +87,9 @@ class ExternalNotificationService:
 
         if slack_webhook:
             await self.send_slack_notification(slack_webhook, message, title)
-        
+
         if discord_webhook:
             await self.send_discord_notification(discord_webhook, message, title)
+
 
 notification_service = ExternalNotificationService()

@@ -41,8 +41,10 @@ def _queued_metadata(scan_config: dict | None = None) -> dict:
 def _build_scan_config_from_request(payload: ScanConfigRequest) -> dict:
     """Build and validate scan configuration from request (FIX #5: Input validation)."""
     cfg: dict = {
-        "selected_templates": payload.selected_templates or DEFAULT_SCAN_CONFIG["selected_templates"],
-        "severity_filter": payload.severity_filter or DEFAULT_SCAN_CONFIG["severity_filter"],
+        "selected_templates": payload.selected_templates
+        or DEFAULT_SCAN_CONFIG["selected_templates"],
+        "severity_filter": payload.severity_filter
+        or DEFAULT_SCAN_CONFIG["severity_filter"],
     }
 
     if payload.profile is not None:
@@ -75,7 +77,11 @@ def _build_scan_config_from_request(payload: ScanConfigRequest) -> dict:
 
 
 def _guard_scan_request(db: Session, target_id: int, user_id: int) -> Target:
-    target = db.query(Target).filter(Target.id == target_id, Target.owner_id == user_id).first()
+    target = (
+        db.query(Target)
+        .filter(Target.id == target_id, Target.owner_id == user_id)
+        .first()
+    )
     if not target:
         raise HTTPException(status_code=404, detail="Target not found")
 
@@ -86,9 +92,13 @@ def _guard_scan_request(db: Session, target_id: int, user_id: int) -> Target:
         .first()
     )
     if running:
-        raise HTTPException(status_code=409, detail="Scan already in progress for this target")
+        raise HTTPException(
+            status_code=409, detail="Scan already in progress for this target"
+        )
 
-    recent_threshold = datetime.now(timezone.utc) - timedelta(seconds=settings.scan_throttle_seconds)
+    recent_threshold = datetime.now(timezone.utc) - timedelta(
+        seconds=settings.scan_throttle_seconds
+    )
     recent = (
         db.query(Scan)
         .join(Target, Target.id == Scan.target_id)
@@ -97,11 +107,18 @@ def _guard_scan_request(db: Session, target_id: int, user_id: int) -> Target:
         .first()
     )
     if recent:
-        raise HTTPException(status_code=429, detail="Scan throttled. Please wait before starting another scan.")
+        raise HTTPException(
+            status_code=429,
+            detail="Scan throttled. Please wait before starting another scan.",
+        )
     return target
 
 
-@router.post("/scan/{target_id}", response_model=ScanStatusOut, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/scan/{target_id}",
+    response_model=ScanStatusOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 @limiter.limit(settings.scan_rate_limit)
 def trigger_scan(
     target_id: int,
@@ -110,51 +127,62 @@ def trigger_scan(
     user: User = Depends(get_current_user),
 ):
     target = _guard_scan_request(db, target_id, user.id)
-    
+
     # FIX #6: Use FOR UPDATE to prevent race condition
     running_scan = db.execute(
-        select(Scan).where(
-            and_(
-                Scan.target_id == target.id,
-                Scan.status.in_(["pending", "running"])
-            )
-        ).with_for_update()
+        select(Scan)
+        .where(
+            and_(Scan.target_id == target.id, Scan.status.in_(["pending", "running"]))
+        )
+        .with_for_update()
     ).scalar_one_or_none()
-    
+
     if running_scan:
-        raise HTTPException(status_code=409, detail="Scan already in progress for this target")
-    
+        raise HTTPException(
+            status_code=409, detail="Scan already in progress for this target"
+        )
+
     scan = Scan(
         target_id=target.id,
         status="pending",
         metadata_json=_queued_metadata(DEFAULT_SCAN_CONFIG),
         scan_config_json=dict(DEFAULT_SCAN_CONFIG),
     )
-    
+
     # FIX #11: Atomic transaction for scan creation and audit logging
     try:
         db.add(scan)
         db.flush()  # Get scan.id without commit
-        
+
         log_audit_event(
             db,
             action="scan_triggered",
             user_id=user.id,
             ip_address=request.client.host if request.client else None,
-            metadata_json={"target_id": target.id, "scan_id": scan.id, "mode": "default"},
+            metadata_json={
+                "target_id": target.id,
+                "scan_id": scan.id,
+                "mode": "default",
+            },
         )
-        
+
         db.commit()  # Single commit point
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Scan already in progress for this target")
-    
+        raise HTTPException(
+            status_code=409, detail="Scan already in progress for this target"
+        )
+
     db.refresh(scan)
     start_scan_chain(scan.id)
     return scan
 
 
-@router.post("/scan/{target_id}/config", response_model=ScanStatusOut, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/scan/{target_id}/config",
+    response_model=ScanStatusOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 @limiter.limit(settings.scan_rate_limit)
 def trigger_scan_with_config(
     target_id: int,
@@ -165,45 +193,52 @@ def trigger_scan_with_config(
 ):
     target = _guard_scan_request(db, target_id, user.id)
     cfg = _build_scan_config_from_request(payload)
-    
+
     # FIX #6: Use FOR UPDATE to prevent race condition
     running_scan = db.execute(
-        select(Scan).where(
-            and_(
-                Scan.target_id == target.id,
-                Scan.status.in_(["pending", "running"])
-            )
-        ).with_for_update()
+        select(Scan)
+        .where(
+            and_(Scan.target_id == target.id, Scan.status.in_(["pending", "running"]))
+        )
+        .with_for_update()
     ).scalar_one_or_none()
-    
+
     if running_scan:
-        raise HTTPException(status_code=409, detail="Scan already in progress for this target")
-    
+        raise HTTPException(
+            status_code=409, detail="Scan already in progress for this target"
+        )
+
     scan = Scan(
         target_id=target.id,
         status="pending",
         metadata_json=_queued_metadata(cfg),
         scan_config_json=cfg,
     )
-    
+
     # FIX #11: Atomic transaction for scan creation and audit logging
     try:
         db.add(scan)
         db.flush()
-        
+
         log_audit_event(
             db,
             action="scan_triggered",
             user_id=user.id,
             ip_address=request.client.host if request.client else None,
-            metadata_json={"target_id": target.id, "scan_id": scan.id, "mode": "configured"},
+            metadata_json={
+                "target_id": target.id,
+                "scan_id": scan.id,
+                "mode": "configured",
+            },
         )
-        
+
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Scan already in progress for this target")
-    
+        raise HTTPException(
+            status_code=409, detail="Scan already in progress for this target"
+        )
+
     db.refresh(scan)
     start_scan_chain(scan.id)
     return scan
@@ -227,7 +262,7 @@ def get_scan(  # FIX #7: Remove async - only sync operations
     )
     if not scan:
         raise HTTPException(status_code=404, detail="Not found")
-    
+
     if scan.logs:
         scan.logs.sort(key=lambda row: row.started_at)
     return scan
@@ -247,7 +282,7 @@ def list_scan_artifacts(  # FIX #7: Remove async - only sync operations
     limit = min(limit, 100)  # Max 100 items per page
     if skip < 0:
         skip = 0
-    
+
     # FIX #15: Single query with join for atomic authorization check
     scan = (
         db.query(Scan)
@@ -257,13 +292,9 @@ def list_scan_artifacts(  # FIX #7: Remove async - only sync operations
     )
     if not scan:
         raise HTTPException(status_code=404, detail="Not found")
-    
-    total = (
-        db.query(ScanArtifact)
-        .filter(ScanArtifact.scan_id == scan_id)
-        .count()
-    )
-    
+
+    total = db.query(ScanArtifact).filter(ScanArtifact.scan_id == scan_id).count()
+
     rows = (
         db.query(ScanArtifact)
         .filter(ScanArtifact.scan_id == scan_id)
@@ -272,5 +303,5 @@ def list_scan_artifacts(  # FIX #7: Remove async - only sync operations
         .limit(limit)
         .all()
     )
-    
+
     return rows

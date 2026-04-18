@@ -13,7 +13,9 @@ from app.services.scan_pipeline import pipeline_stage_total, resolve_pipeline_st
 
 class ScanPipelineTests(unittest.TestCase):
     def test_standard_pipeline_no_modules(self):
-        self.assertEqual(resolve_pipeline_stages({}), ["subfinder", "httpx", "gau", "nuclei"])
+        self.assertEqual(
+            resolve_pipeline_stages({}), ["subfinder", "httpx", "gau", "nuclei"]
+        )
         self.assertEqual(pipeline_stage_total({}), 4)
 
     def test_extended_passive_prefix(self):

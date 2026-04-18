@@ -21,10 +21,36 @@ from slowapi.middleware import SlowAPIMiddleware
 from app import models  # noqa: F401
 from app.core.config import settings
 from app.core.database import db_timeout_handler, SATimeoutError, init_engine, get_db
-from app.core.exception_handlers import http_exception_handler, unhandled_exception_handler
+from app.core.exception_handlers import (
+    http_exception_handler,
+    unhandled_exception_handler,
+)
 from app.core.metrics import http_requests_total, http_request_duration_seconds
 from app.core.middleware import AuthGuardMiddleware, RequestLoggingMiddleware
-from app.routers import admin, auth, blind_xss, bookmarks, notifications, payloads, reports, scans, schedules, ssrf, targets, ticketing, vulnerabilities, websocket, validation, out_of_band, manual_testing, intelligence, custom_templates, system, advanced_recon, verification_api
+from app.routers import (
+    admin,
+    auth,
+    blind_xss,
+    bookmarks,
+    notifications,
+    payloads,
+    reports,
+    scans,
+    schedules,
+    ssrf,
+    targets,
+    ticketing,
+    vulnerabilities,
+    websocket,
+    validation,
+    out_of_band,
+    manual_testing,
+    intelligence,
+    custom_templates,
+    system,
+    advanced_recon,
+    verification_api,
+)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -34,9 +60,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["X-XSS-Protection"] = "0"
-        response.headers["Content-Security-Policy"] = "default-src 'self'; connect-src 'self'; img-src 'self' data: https:; script-src 'self'; style-src 'self' 'unsafe-inline'"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; connect-src 'self'; img-src 'self' data: https:; script-src 'self'; style-src 'self' 'unsafe-inline'"
+        )
         if settings.https_behind_proxy:
-            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains"
+            )
         return response
 
 
@@ -60,6 +90,7 @@ async def lifespan(app: FastAPI):
     init_engine()
     # Startup: Start Redis subscriber
     from app.services.websocket import redis_subscriber
+
     subscriber_task = asyncio.create_task(redis_subscriber.start())
     yield
     # Shutdown: Stop Redis subscriber
@@ -74,7 +105,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 allowed_origins = settings.cors_allowed_origins_list or ["http://localhost:5173"]
 if "*" in allowed_origins:
-    raise RuntimeError("CORS wildcard origin is not allowed when credentials are enabled")
+    raise RuntimeError(
+        "CORS wildcard origin is not allowed when credentials are enabled"
+    )
 
 
 def _trusted_hosts_from_origins(origins: list[str]) -> list[str]:
@@ -99,9 +132,13 @@ app.add_middleware(
     max_age=3600,
 )
 if settings.https_behind_proxy:
-    trusted_hosts = _trusted_hosts_from_origins(allowed_origins) or ["localhost", "127.0.0.1"]
+    trusted_hosts = _trusted_hosts_from_origins(allowed_origins) or [
+        "localhost",
+        "127.0.0.1",
+    ]
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=trusted_hosts)
     from fastapi.middleware import HTTPSRedirectMiddleware
+
     app.add_middleware(HTTPSRedirectMiddleware)
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
@@ -182,6 +219,7 @@ async def health():
     database_status = "disconnected"
     try:
         from app.core.database import get_sessionmaker
+
         sessionmaker = get_sessionmaker()
         db_session = sessionmaker()
         try:

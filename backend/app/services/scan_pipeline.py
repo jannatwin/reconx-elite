@@ -51,7 +51,9 @@ def pipeline_stage_total(scan_config: dict | None) -> int:
     return len(resolve_pipeline_stages(scan_config))
 
 
-def stage_index_and_total(scan_metadata: dict | None, stage_name: str) -> tuple[int, int]:
+def stage_index_and_total(
+    scan_metadata: dict | None, stage_name: str
+) -> tuple[int, int]:
     stages = (scan_metadata or {}).get("pipeline_stages") or list(STANDARD_PIPELINE)
     total = len(stages)
     try:

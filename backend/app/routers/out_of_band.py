@@ -15,26 +15,24 @@ router = APIRouter(prefix="/oob", tags=["out-of-band"])
 
 @router.post("/callback/{callback_id}")
 async def receive_callback(
-    callback_id: str,
-    request: Request,
-    db: Session = Depends(get_db)
+    callback_id: str, request: Request, db: Session = Depends(get_db)
 ):
     """Receive and record out-of-band callback."""
-    
+
     # Extract request details
     client_ip = request.client.host if request.client else "unknown"
     user_agent = request.headers.get("user-agent", "")
-    
+
     # Get headers as dict
     headers = dict(request.headers)
-    
+
     # Get body (limit size)
     try:
         body = await request.body()
-        body_str = body.decode('utf-8', errors='ignore')[:1000]  # Limit size
+        body_str = body.decode("utf-8", errors="ignore")[:1000]  # Limit size
     except:
         body_str = ""
-    
+
     request_data = {
         "source_ip": client_ip,
         "user_agent": user_agent,
@@ -44,13 +42,13 @@ async def receive_callback(
         "path": str(request.url.path),
         "query_string": str(request.url.query) if request.url.query else "",
     }
-    
+
     # Record interaction
     interaction = oob_service.record_interaction(db, callback_id, request_data)
-    
+
     if not interaction:
         raise HTTPException(status_code=404, detail="Callback not found")
-    
+
     # Return success response
     return {
         "status": "recorded",
@@ -69,20 +67,20 @@ async def generate_callback(
     current_user: User = Depends(get_current_user),
 ):
     """Generate a new callback URL for tracking interactions."""
-    
+
     # Validate interaction type
     valid_types = ["ssrf", "blind_xss", "dns"]
     if interaction_type not in valid_types:
-        raise HTTPException(status_code=400, detail=f"Invalid interaction type. Must be one of: {valid_types}")
-    
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid interaction type. Must be one of: {valid_types}",
+        )
+
     # Generate callback details
     callback_details = oob_service.generate_callback(
-        current_user.id,
-        interaction_type,
-        scan_id,
-        vulnerability_id
+        current_user.id, interaction_type, scan_id, vulnerability_id
     )
-    
+
     # Create database record
     interaction = oob_service.create_callback_record(
         db,
@@ -90,9 +88,9 @@ async def generate_callback(
         callback_details["callback_id"],
         interaction_type,
         scan_id,
-        vulnerability_id
+        vulnerability_id,
     )
-    
+
     return {
         "callback_id": callback_details["callback_id"],
         "callback_url": callback_details["callback_url"],
@@ -106,12 +104,12 @@ async def generate_callback(
 async def get_user_interactions(
     limit: int = 100,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Get all out-of-band interactions for the current user."""
-    
+
     interactions = oob_service.get_user_interactions(db, current_user.id, limit)
-    
+
     return {
         "interactions": [
             {
@@ -136,13 +134,12 @@ async def get_user_interactions(
 
 @router.get("/interactions/confirmed")
 async def get_confirmed_interactions(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """Get confirmed out-of-band interactions."""
-    
+
     interactions = oob_service.get_confirmed_interactions(db, current_user.id)
-    
+
     return {
         "confirmed_interactions": [
             {
@@ -165,22 +162,23 @@ async def get_confirmed_interactions(
 async def get_scan_interactions(
     scan_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Get out-of-band interactions for a specific scan."""
-    
+
     # Check if user owns the scan
     from app.models.scan import Scan
+
     scan = db.query(Scan).filter(Scan.id == scan_id).first()
-    
+
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
-    
+
     if scan.target.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
-    
+
     interactions = oob_service.get_scan_interactions(db, scan_id)
-    
+
     return {
         "scan_id": scan_id,
         "interactions": [
@@ -195,7 +193,7 @@ async def get_scan_interactions(
                 "analysis_notes": interaction.analysis_notes,
             }
             for interaction in interactions
-        ]
+        ],
     }
 
 
@@ -203,21 +201,23 @@ async def get_scan_interactions(
 async def get_interaction_details(
     interaction_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Get detailed information about a specific interaction."""
-    
-    interaction = db.query(OutOfBandInteraction).filter(
-        OutOfBandInteraction.id == interaction_id
-    ).first()
-    
+
+    interaction = (
+        db.query(OutOfBandInteraction)
+        .filter(OutOfBandInteraction.id == interaction_id)
+        .first()
+    )
+
     if not interaction:
         raise HTTPException(status_code=404, detail="Interaction not found")
-    
+
     # Check if user owns the interaction
     if interaction.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
-    
+
     return {
         "id": interaction.id,
         "callback_id": interaction.callback_id,

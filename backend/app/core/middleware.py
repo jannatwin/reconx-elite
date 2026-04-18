@@ -47,7 +47,9 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
 
         auth_header = request.headers.get("Authorization", "")
         request.state.user_id = None
-        request.state.rate_limit_key = request.client.host if request.client else "anonymous"
+        request.state.rate_limit_key = (
+            request.client.host if request.client else "anonymous"
+        )
 
         if auth_header.startswith("Bearer "):
             token = auth_header.removeprefix("Bearer ").strip()
@@ -68,7 +70,10 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
                         content={"detail": "Invalid access token"},
                     )
 
-        if request.url.path.startswith(self.protected_prefixes) and request.state.user_id is None:
+        if (
+            request.url.path.startswith(self.protected_prefixes)
+            and request.state.user_id is None
+        ):
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 content={"detail": "Missing bearer token"},

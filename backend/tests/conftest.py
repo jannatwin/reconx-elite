@@ -1,4 +1,5 @@
 """Pytest configuration and fixtures for ReconX Elite tests."""
+
 import os
 import sys
 from pathlib import Path
@@ -18,9 +19,7 @@ TEST_DATABASE_URL = "sqlite:///:memory:"
 def test_db():
     """Create test database engine."""
     engine = create_engine(
-        TEST_DATABASE_URL,
-        connect_args={"check_same_thread": False},
-        echo=False
+        TEST_DATABASE_URL, connect_args={"check_same_thread": False}, echo=False
     )
     return engine
 
@@ -30,9 +29,9 @@ def test_session(test_db):
     """Create test database session."""
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_db)
     session = SessionLocal()
-    
+
     yield session
-    
+
     session.close()
 
 
@@ -44,7 +43,7 @@ def mock_ai_response():
         "type": "analysis",
         "result": "Test analysis result",
         "confidence": 0.95,
-        "model": "gemini-1.5-flash"
+        "model": "gemini-1.5-flash",
     }
 
 
@@ -60,17 +59,17 @@ def mock_scan_result():
                 "type": "sql_injection",
                 "severity": "critical",
                 "endpoint": "/api/users",
-                "confidence": 0.92
+                "confidence": 0.92,
             },
             {
                 "id": "vuln-002",
                 "type": "xss_reflected",
                 "severity": "high",
                 "endpoint": "/search",
-                "confidence": 0.85
-            }
+                "confidence": 0.85,
+            },
         ],
-        "total_findings": 2
+        "total_findings": 2,
     }
 
 
@@ -82,27 +81,22 @@ def mock_reconnaissance_result():
         "target": "example.com",
         "subdomains": [
             {"subdomain": "api.example.com", "ip": "192.168.1.1"},
-            {"subdomain": "admin.example.com", "ip": "192.168.1.2"}
+            {"subdomain": "admin.example.com", "ip": "192.168.1.2"},
         ],
         "endpoints": [
             {"url": "https://api.example.com/users", "status": 200},
-            {"url": "https://api.example.com/products", "status": 200}
+            {"url": "https://api.example.com/products", "status": 200},
         ],
-        "js_files": [
-            {"url": "https://api.example.com/static/app.js", "size": 45678}
-        ],
+        "js_files": [{"url": "https://api.example.com/static/app.js", "size": 45678}],
         "total_subdomains": 2,
-        "total_endpoints": 2
+        "total_endpoints": 2,
     }
 
 
 @pytest.fixture
 def mock_session_tokens():
     """Mock session tokens."""
-    return {
-        "session_a": "token_value_a_123456",
-        "session_b": "token_value_b_789012"
-    }
+    return {"session_a": "token_value_a_123456", "session_b": "token_value_b_789012"}
 
 
 @pytest.fixture
@@ -114,19 +108,19 @@ def mock_context_tree():
             "web_framework": "FastAPI",
             "database": "PostgreSQL",
             "cache": "Redis",
-            "cms": None
+            "cms": None,
         },
         "endpoints": [
             {
                 "path": "/api/users",
                 "method": "GET",
                 "parameters": ["id", "filter"],
-                "auth_required": True
+                "auth_required": True,
             }
         ],
         "attack_surface": {
             "total_endpoints": 25,
             "authenticated_endpoints": 10,
-            "public_endpoints": 15
-        }
+            "public_endpoints": 15,
+        },
     }

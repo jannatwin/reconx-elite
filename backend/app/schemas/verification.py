@@ -65,7 +65,9 @@ class VerificationState(BaseModel):
     scan_mode: str = "passive"
     current_phase: str = "recon"
     hosts: HostGroupState = Field(default_factory=HostGroupState)
-    js_analysis: JavaScriptAnalysisState = Field(default_factory=JavaScriptAnalysisState)
+    js_analysis: JavaScriptAnalysisState = Field(
+        default_factory=JavaScriptAnalysisState
+    )
     findings: list[VerificationFinding] = Field(default_factory=list)
     chains_identified: list[dict[str, Any]] = Field(default_factory=list)
     reports_drafted: int = 0

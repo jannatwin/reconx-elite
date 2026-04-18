@@ -12,7 +12,11 @@ from fastapi.testclient import TestClient
 from app.core.config import settings
 from app.core.deps import get_current_user, require_admin
 from app.main import app
-from app.schemas.verification import HostGroupState, JavaScriptAnalysisState, VerificationFinding
+from app.schemas.verification import (
+    HostGroupState,
+    JavaScriptAnalysisState,
+    VerificationFinding,
+)
 
 
 class VerificationApiTests(unittest.TestCase):
@@ -44,19 +48,28 @@ class VerificationApiTests(unittest.TestCase):
         app.dependency_overrides[get_current_user] = lambda: fake_user
 
         with (
-            patch("app.routers.verification_api._load_target_and_scan", return_value=(fake_target, fake_scan)),
+            patch(
+                "app.routers.verification_api._load_target_and_scan",
+                return_value=(fake_target, fake_scan),
+            ),
             patch("app.routers.verification_api._build_findings", return_value=[]),
             patch(
                 "app.routers.verification_api._build_host_groups",
-                return_value=HostGroupState(total_discovered=12, live=4, api_targets=["api.example.com"]),
+                return_value=HostGroupState(
+                    total_discovered=12, live=4, api_targets=["api.example.com"]
+                ),
             ),
             patch(
                 "app.routers.verification_api._build_js_analysis",
-                return_value=JavaScriptAnalysisState(files_analyzed=2, endpoints_found=["https://api.example.com/v1"]),
+                return_value=JavaScriptAnalysisState(
+                    files_analyzed=2, endpoints_found=["https://api.example.com/v1"]
+                ),
             ),
             patch(
                 "app.routers.verification_api._build_chains",
-                return_value=[{"title": "Example chain", "combined_severity": "High", "nodes": []}],
+                return_value=[
+                    {"title": "Example chain", "combined_severity": "High", "nodes": []}
+                ],
             ),
             patch(
                 "app.routers.verification_api.get_recent_agent_log_events",
@@ -64,7 +77,11 @@ class VerificationApiTests(unittest.TestCase):
                     {
                         "type": "agent_log",
                         "timestamp": "2026-04-12T00:00:00Z",
-                        "data": {"event": "verification_started", "status": "started", "success": True},
+                        "data": {
+                            "event": "verification_started",
+                            "status": "started",
+                            "success": True,
+                        },
                     }
                 ],
             ),
@@ -86,16 +103,39 @@ class VerificationApiTests(unittest.TestCase):
         fake_scan = SimpleNamespace(id=11, target_id=7)
 
         findings = [
-            VerificationFinding(id="1", type="IDOR", endpoint="https://api.example.com", severity="High", status="confirmed"),
-            VerificationFinding(id="2", type="XSS", endpoint="https://app.example.com", severity="Medium", status="unconfirmed"),
-            VerificationFinding(id="3", type="SSRF", endpoint="https://svc.example.com", severity="Critical", status="reported"),
+            VerificationFinding(
+                id="1",
+                type="IDOR",
+                endpoint="https://api.example.com",
+                severity="High",
+                status="confirmed",
+            ),
+            VerificationFinding(
+                id="2",
+                type="XSS",
+                endpoint="https://app.example.com",
+                severity="Medium",
+                status="unconfirmed",
+            ),
+            VerificationFinding(
+                id="3",
+                type="SSRF",
+                endpoint="https://svc.example.com",
+                severity="Critical",
+                status="reported",
+            ),
         ]
 
         app.dependency_overrides[get_current_user] = lambda: fake_user
 
         with (
-            patch("app.routers.verification_api._load_target_and_scan", return_value=(fake_target, fake_scan)),
-            patch("app.routers.verification_api._build_findings", return_value=findings),
+            patch(
+                "app.routers.verification_api._load_target_and_scan",
+                return_value=(fake_target, fake_scan),
+            ),
+            patch(
+                "app.routers.verification_api._build_findings", return_value=findings
+            ),
         ):
             client = TestClient(app)
             response = client.get("/api/findings?target_id=7")
@@ -103,7 +143,9 @@ class VerificationApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(len(payload["findings"]), 2)
-        self.assertEqual({item["status"] for item in payload["findings"]}, {"confirmed", "reported"})
+        self.assertEqual(
+            {item["status"] for item in payload["findings"]}, {"confirmed", "reported"}
+        )
 
     def test_model_status_requires_admin(self):
         def deny_admin():
@@ -152,7 +194,9 @@ class VerificationApiTests(unittest.TestCase):
             verify_response = client.post("/api/verify-models")
 
         self.assertEqual(status_response.status_code, 200)
-        self.assertEqual(status_response.json()["statuses"]["orchestrator"]["status"], "ONLINE")
+        self.assertEqual(
+            status_response.json()["statuses"]["orchestrator"]["status"], "ONLINE"
+        )
         self.assertEqual(verify_response.status_code, 200)
         self.assertEqual(verify_response.json()["orchestrator"]["status"], "ONLINE")
 

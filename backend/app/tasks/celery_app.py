@@ -7,6 +7,7 @@ from celery.schedules import crontab
 try:
     from prometheus_client import Counter, start_http_server
 except ModuleNotFoundError:  # pragma: no cover - local dev fallback
+
     class _NoopCounter:
         def labels(self, **kwargs):  # noqa: ARG002
             return self
@@ -19,6 +20,7 @@ except ModuleNotFoundError:  # pragma: no cover - local dev fallback
 
     def start_http_server(*args, **kwargs):  # noqa: ARG001
         return None
+
 
 from app.core.config import settings
 from app.core.logging_config import configure_logging
@@ -71,7 +73,9 @@ _task_context: threading.local = threading.local()
 
 
 @signals.after_setup_logger.connect
-def _setup_json_logging(logger: logging.Logger, **kwargs: object) -> None:  # noqa: ARG001
+def _setup_json_logging(
+    logger: logging.Logger, **kwargs: object
+) -> None:  # noqa: ARG001
     """Apply JSON logging config to Celery's logger after it is set up."""
     configure_logging()
 

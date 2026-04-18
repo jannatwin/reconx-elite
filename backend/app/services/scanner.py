@@ -13,7 +13,9 @@ def run_command(command: list[str], input_data: str | None = None) -> list[str]:
         check=False,
     )
     if process.returncode != 0:
-        raise RuntimeError(f"Command failed: {' '.join(command)} :: {process.stderr.strip()}")
+        raise RuntimeError(
+            f"Command failed: {' '.join(command)} :: {process.stderr.strip()}"
+        )
     return [line.strip() for line in process.stdout.splitlines() if line.strip()]
 
 
@@ -58,7 +60,17 @@ def basic_security_headers(live_hosts: list[str]) -> list[dict]:
     for host in live_hosts:
         missing = []
         try:
-            headers_lines = run_command(["httpx", "-silent", "-u", f"https://{host}", "-title", "-status-code", "-web-server"])
+            headers_lines = run_command(
+                [
+                    "httpx",
+                    "-silent",
+                    "-u",
+                    f"https://{host}",
+                    "-title",
+                    "-status-code",
+                    "-web-server",
+                ]
+            )
             if not headers_lines:
                 missing.append("unable-to-fetch")
         except RuntimeError:
@@ -67,7 +79,10 @@ def basic_security_headers(live_hosts: list[str]) -> list[dict]:
             findings.append(
                 {
                     "template-id": "basic-header-check",
-                    "info": {"severity": "info", "name": "Basic Header Reachability Check"},
+                    "info": {
+                        "severity": "info",
+                        "name": "Basic Header Reachability Check",
+                    },
                     "matched-at": host,
                     "extracted-results": [", ".join(missing)],
                 }

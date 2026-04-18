@@ -46,7 +46,9 @@ def fetch_crtsh_subdomains(domain: str) -> list[str]:
     cap = settings.scan_crtsh_max_names
     url = f"https://crt.sh/?q=%25.{domain}&output=json"
     try:
-        with httpx.Client(timeout=settings.scan_crtsh_timeout_seconds, follow_redirects=True) as client:
+        with httpx.Client(
+            timeout=settings.scan_crtsh_timeout_seconds, follow_redirects=True
+        ) as client:
             response = client.get(url)
             response.raise_for_status()
             data = response.json()
@@ -97,7 +99,10 @@ def run_github_subdomains_cli(domain: str) -> list[str]:
         return []
 
     if proc.returncode != 0:
-        logger.warning("github-subdomains failed: %s", proc.stderr[:500] if proc.stderr else proc.returncode)
+        logger.warning(
+            "github-subdomains failed: %s",
+            proc.stderr[:500] if proc.stderr else proc.returncode,
+        )
         return []
 
     hosts = [line.strip() for line in (proc.stdout or "").splitlines() if line.strip()]

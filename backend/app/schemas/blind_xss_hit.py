@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict
 
 class BlindXssHitBase(BaseModel):
     """Base schema for blind XSS hit."""
+
     token: str
     payload_opportunity_id: Optional[int] = None
     ip_address: str
@@ -20,11 +21,13 @@ class BlindXssHitBase(BaseModel):
 
 class BlindXssHitCreate(BlindXssHitBase):
     """Schema for creating a blind XSS hit."""
+
     pass
 
 
 class BlindXssHitOut(BlindXssHitBase):
     """Schema for blind XSS hit responses."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -36,6 +39,7 @@ class BlindXssHitOut(BlindXssHitBase):
 
 class BlindXssHitSummary(BaseModel):
     """Summary schema for blind XSS hits with related data."""
+
     id: int
     token: str
     ip_address: str

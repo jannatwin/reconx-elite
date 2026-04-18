@@ -1,6 +1,7 @@
 try:
     from prometheus_client import Counter, Histogram, Gauge
 except ModuleNotFoundError:  # pragma: no cover - local fallback
+
     class _NoopMetric:
         def labels(self, **kwargs):  # noqa: ARG002
             return self
@@ -22,6 +23,7 @@ except ModuleNotFoundError:  # pragma: no cover - local fallback
 
     def Gauge(*args, **kwargs):  # type: ignore[misc] # noqa: N802, ARG001
         return _NoopMetric()
+
 
 http_requests_total = Counter(
     "http_requests_total",

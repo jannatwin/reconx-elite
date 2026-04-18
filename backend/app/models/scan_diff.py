@@ -8,7 +8,9 @@ class ScanDiff(Base):
     __tablename__ = "scan_diffs"
 
     id = Column(Integer, primary_key=True, index=True)
-    scan_id = Column(Integer, ForeignKey("scans.id", ondelete="CASCADE"), nullable=False, index=True)
+    scan_id = Column(
+        Integer, ForeignKey("scans.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     previous_scan_id = Column(Integer, ForeignKey("scans.id"), nullable=True)
     new_subdomains = Column(JSON, default=list)  # List of new subdomain hostnames
     new_endpoints = Column(JSON, default=list)  # List of new endpoint URLs

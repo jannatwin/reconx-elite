@@ -1,4 +1,12 @@
-from sqlalchemy import JSON, Boolean, Column, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -6,10 +14,14 @@ from app.core.database import Base
 
 class Subdomain(Base):
     __tablename__ = "subdomains"
-    __table_args__ = (UniqueConstraint("scan_id", "hostname", name="uq_scan_subdomain"),)
+    __table_args__ = (
+        UniqueConstraint("scan_id", "hostname", name="uq_scan_subdomain"),
+    )
 
     id = Column(Integer, primary_key=True)
-    scan_id = Column(Integer, ForeignKey("scans.id", ondelete="CASCADE"), nullable=False, index=True)
+    scan_id = Column(
+        Integer, ForeignKey("scans.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     hostname = Column(String(255), nullable=False, index=True)
     is_live = Column(Boolean, default=False, nullable=False)
     environment = Column(String(32), default="unknown", nullable=False, index=True)
