@@ -6,9 +6,8 @@ ARG VITE_API_BASE_URL=http://localhost:8000
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 
 # Copy package files first for better layer caching
-COPY frontend/package*.json ./frontend/
+COPY frontend/package*.json ./
 
-WORKDIR /app/frontend
 RUN npm ci && npm run build && \
     test -d dist || (echo "Build failed: dist directory not found"; exit 1)
 
@@ -24,12 +23,14 @@ RUN addgroup -S appuser && adduser -S appuser -G appuser && \
 RUN sed -i '/^user nginx;/d' /etc/nginx/nginx.conf && \
     sed -i 's|^pid /var/run/nginx\.pid;|pid /var/run/nginx/nginx.pid;|' /etc/nginx/nginx.conf
 
-# Copy nginx config
+# Copy nginx config first, before validation
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
-RUN nginx -t  # Validate nginx configuration syntax
+
+# Validate nginx configuration syntax
+RUN nginx -t
 
 # Copy built app
-COPY --from=build --chown=appuser:appuser /app/frontend/dist /usr/share/nginx/html
+COPY --from=build --chown=appuser:appuser /app/dist /usr/share/nginx/html
 
 USER appuser
 

@@ -58,6 +58,6 @@ COPY --chown=appuser:appuser backend/alembic.ini /app/alembic.ini
 USER appuser
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD celery -A app.tasks.celery_app.celery_app inspect ping -d celery@$HOSTNAME || exit 1
+    CMD sh -c "celery -A app.celery_app inspect ping -d celery@$$HOSTNAME || exit 1"
 
-CMD ["sh", "-c", "celery -A app.tasks.celery_app.celery_app worker --loglevel=info"]
+CMD ["sh", "-c", "celery -A app.celery_app worker --loglevel=info"]

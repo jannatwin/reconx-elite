@@ -1,42 +1,44 @@
-import threading
-from sqlalchemy import create_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.exc import TimeoutError as SATimeoutError
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import declarative_base
 from fastapi import Request
 from fastapi.responses import JSONResponse
+from typing import AsyncGenerator
 
 from app.core.config import settings
 
 # Engine and session maker - initialized at application startup
 _engine = None
-_SessionLocal = None
-_engine_lock = threading.Lock()
+_async_session_maker = None
 
 
 def init_engine():
-    """Initialize the database engine and session maker at application startup."""
-    global _engine, _SessionLocal
-    with _engine_lock:
-        if _engine is None:
-            _engine = create_engine(
-                settings.database_url,
-                pool_pre_ping=True,
-                pool_size=settings.db_pool_size,
-                max_overflow=settings.db_max_overflow,
-                pool_recycle=settings.db_pool_recycle,
-                pool_timeout=settings.db_pool_timeout,
-                echo=False,
-                connect_args={
-                    "connect_timeout": 10,
-                },
-            )
-            _SessionLocal = sessionmaker(
-                autocommit=False, autoflush=False, bind=_engine
-            )
+    """Initialize the async database engine and session maker at application startup."""
+    global _engine, _async_session_maker
+    if _engine is None:
+        # Convert psycopg2 URL to async URL for SQLAlchemy
+        async_db_url = settings.database_url.replace(
+            "postgresql+psycopg2://", "postgresql+asyncpg://"
+        )
+        _engine = create_async_engine(
+            async_db_url,
+            pool_pre_ping=True,
+            pool_size=settings.db_pool_size,
+            max_overflow=settings.db_max_overflow,
+            pool_recycle=settings.db_pool_recycle,
+            pool_timeout=settings.db_pool_timeout,
+            echo=False,
+            connect_args={
+                "timeout": 10,
+            },
+        )
+        _async_session_maker = async_sessionmaker(
+            _engine, class_=AsyncSession, expire_on_commit=False
+        )
 
 
 def get_engine():
-    """Get the initialized database engine."""
+    """Get the initialized async database engine."""
     if _engine is None:
         init_engine()
     return _engine
@@ -58,21 +60,21 @@ async def db_timeout_handler(request: Request, exc: SATimeoutError) -> JSONRespo
 
 
 def get_sessionmaker():
-    """Get the initialized session maker."""
-    if _SessionLocal is None:
+    """Get the initialized async session maker."""
+    if _async_session_maker is None:
         init_engine()
-    return _SessionLocal
+    return _async_session_maker
 
 
 Base = declarative_base()
 
 
-def get_db():
-    db = get_sessionmaker()()
-    try:
-        yield db
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """Async context manager for database sessions."""
+    maker = get_sessionmaker()
+    async with maker() as session:
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise

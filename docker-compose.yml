@@ -60,11 +60,11 @@ services:
     cap_drop:
       - ALL
     healthcheck:
-      test: ["CMD", "test", "-f", "/app/alembic.ini"]
-      interval: 5s
+      test: ["CMD-SHELL", "alembic current -c /app/alembic.ini | grep -q . && echo 'Migrations applied' || exit 1"]
+      interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 5s
+      retries: 5
+      start_period: 15s
     logging:
       driver: "json-file"
       options:
