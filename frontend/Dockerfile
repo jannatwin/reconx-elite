@@ -8,7 +8,12 @@ ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 # Copy package files first for better layer caching
 COPY frontend/package*.json ./
 
-RUN npm ci && npm run build && \
+RUN npm install --legacy-peer-deps
+
+# Copy the rest of the frontend code
+COPY frontend/ ./
+
+RUN npm run build && \
     test -d dist || (echo "Build failed: dist directory not found"; exit 1)
 
 # Runtime stage
