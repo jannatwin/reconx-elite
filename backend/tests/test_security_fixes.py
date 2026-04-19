@@ -170,8 +170,9 @@ class TestDatabaseSecurity(unittest.TestCase):
         session_factory = get_sessionmaker()
 
         # Check session configuration
-        self.assertFalse(session_factory.kw["autocommit"])
-        self.assertFalse(session_factory.kw["autoflush"])
+        self.assertFalse(session_factory.kw.get("autocommit", True), "autocommit should be False")
+        self.assertFalse(session_factory.kw.get("autoflush", True), "autoflush should be False")
+        self.assertFalse(session_factory.kw.get("expire_on_commit", True), "expire_on_commit should be False")
 
 
 class TestCeleryTaskSecurity(unittest.TestCase):

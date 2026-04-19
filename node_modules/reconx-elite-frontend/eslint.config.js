@@ -15,7 +15,7 @@ export default [
       ecmaVersion: 2022,
       sourceType: "module",
       parserOptions: { ecmaFeatures: { jsx: true } },
-      globals: { ...globals.browser },
+      globals: { ...globals.browser, ...globals.node },
     },
     plugins: {
       "react-hooks": reactHooks,
@@ -29,6 +29,33 @@ export default [
       "no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
     },
     settings: { react: { version: "detect" } },
+  },
+  // Test files - enable Jest globals
+  {
+    files: ["**/*.test.js", "**/*.test.jsx", "**/*.spec.js", "**/*.spec.jsx"],
+    languageOptions: {
+      globals: {
+        describe: "readonly",
+        it: "readonly",
+        expect: "readonly",
+        jest: "readonly",
+        beforeEach: "readonly",
+        afterEach: "readonly",
+        beforeAll: "readonly",
+        afterAll: "readonly",
+      },
+    },
+  },
+  // Mock files - enable Node/CommonJS globals
+  {
+    files: ["src/test/__mocks__/**/*.js"],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        module: "readonly",
+        exports: "readonly",
+      },
+    },
   },
   eslintConfigPrettier,
 ];

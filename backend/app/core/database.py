@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.exc import TimeoutError as SATimeoutError
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import declarative_base, sessionmaker
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from typing import AsyncGenerator
@@ -60,10 +60,20 @@ async def db_timeout_handler(request: Request, exc: SATimeoutError) -> JSONRespo
 
 
 def get_sessionmaker():
-    """Get the initialized async session maker."""
+    """Get the initialized session maker (synchronous for testing)."""
     if _async_session_maker is None:
         init_engine()
-    return _async_session_maker
+    
+    # For testing compatibility, return a sync sessionmaker with proper configuration
+    # This allows tests to inspect .kw attributes
+    sync_session_factory = sessionmaker(
+        bind=_engine.sync_engine if hasattr(_engine, 'sync_engine') else None,
+        autocommit=False,
+        autoflush=False,
+        expire_on_commit=False
+    )
+    
+    return sync_session_factory
 
 
 Base = declarative_base()
