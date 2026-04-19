@@ -9,9 +9,9 @@ import TargetPage from "./pages/TargetPage";
 import ErrorBoundary from "./components/ErrorBoundary";
 
 function ProtectedRoute({ children }) {
+  const { isAuthenticated, error } = useAuth();
+  
   try {
-    const { isAuthenticated, error } = useAuth();
-    
     if (error) {
       return (
         <div style={{ padding: "20px", color: "red", fontWeight: "bold" }}>
@@ -34,9 +34,9 @@ function ProtectedRoute({ children }) {
 }
 
 function AdminRoute({ children }) {
+  const { isAuthenticated, isAdmin, error } = useAuth();
+  
   try {
-    const { isAuthenticated, isAdmin, error } = useAuth();
-    
     if (error) {
       return (
         <div style={{ padding: "20px", color: "red", fontWeight: "bold" }}>
